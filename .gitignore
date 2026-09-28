@@ -1,0 +1,11 @@
+backend/.venv/
+**/__pycache__/
+frontend/node_modules/
+frontend/dist/
+desktop/node_modules/
+build/
+release/
+tmp/
+.env
+*.sqlite3*
+.DS_Store

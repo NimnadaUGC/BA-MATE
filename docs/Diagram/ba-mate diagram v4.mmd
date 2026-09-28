@@ -1,0 +1,39 @@
+flowchart TB
+    BA["Business analyst on a local device"] --> UI["BA Mate interface<br/>Desktop shell or browser"]
+    UI --> SOURCE["Upload PDF, DOCX or text<br/>Retain original, hash and extraction locations"]
+    SOURCE --> REVIEW["Manual extraction review<br/>Approve source and classify sensitivity"]
+    REVIEW --> PROJECT["Project and goal evidence<br/>Sources, answers, requirements, stories, documents, diagrams"]
+    PROJECT --> TASK["Focused workflow workbench"]
+    TASK --> LOCAL["Local FastAPI service<br/>Loopback and session boundary"]
+    LOCAL --> POLICY{"External processing permitted<br/>and no confidential evidence?"}
+    POLICY -->|Local inference| OLLAMA["Ollama on this device"]
+    POLICY -->|Explicitly permitted| REMOTE["OpenRouter / Hugging Face<br/>or HTTPS organisation Ollama"]
+    LOCAL --> BUDGET["Evidence priority and context budget<br/>Partial and omitted reference receipt"]
+    BUDGET --> PROVIDER["Selected provider only<br/>Bounded timeout; no synthetic fallback"]
+    OLLAMA --> PROVIDER
+    REMOTE --> PROVIDER
+    PROVIDER --> VALID{"JSON schema, task scope<br/>and supplied identifiers valid?"}
+    VALID -->|No| ERROR["Visible failure; working artifacts unchanged"]
+    VALID -->|Yes| PROPOSAL["Pending proposal<br/>Decision reminders and advisory checks"]
+    PROPOSAL --> HUMAN["BA edits, selects or rejects"]
+    HUMAN -->|Accept| DRAFT["Draft artifacts and pending trace links"]
+    HUMAN --> HISTORY["Original response, reviewed response,<br/>selection and run metadata retained"]
+    DRAFT --> VERIFY["Human evidence verification and artifact review"]
+    VERIFY --> GATE{"Baseline eligibility checks"}
+    GATE -->|Eligible and BA approves| BASE["Locked content snapshot"]
+    BASE --> RESTORE["Restore content as drafts<br/>Keep recovery snapshot; revalidate links"]
+    RESTORE --> VERIFY
+    UI --> STORE["Revision-checked SQLite workspace<br/>Full project ZIP import and export"]
+    HISTORY --> STORE
+    BASE --> STORE
+    UI --> EVAL["Research console<br/>Manual / generic-prompt AI / framework-prompt AI"]
+    EVAL --> MEASURE["Model/configuration and condition records<br/>Foreground timing, feedback and failure counts"]
+    MEASURE --> EXPORT["Pseudonymous research export<br/>Review free text before sharing"]
+    FUTURE["Separate release work<br/>Authenticated shared collaboration, OCR,<br/>signed cross-platform distribution and external integrations"]
+    FUTURE -.-> UI
+    classDef human fill:#fff2df,stroke:#b56b00,color:#17212e;
+    classDef stored fill:#e8f5f0,stroke:#237662,color:#17212e;
+    classDef planned fill:#f3f4f6,stroke:#687585,stroke-dasharray:5 5,color:#17212e;
+    class BA,REVIEW,HUMAN,VERIFY human;
+    class STORE,HISTORY,BASE stored;
+    class FUTURE planned;

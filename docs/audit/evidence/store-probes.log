@@ -1,0 +1,19 @@
+
+ RUN  v3.2.7 /Users/nimnada_nk/University/Hons Degree Program/CSC_4046 - Individual Reserach Project/BA_MATE
+
+stdout | tmp/audit-2026-09-20/store-probes.test.ts > AUD-01 reproduces baseline eligibility despite a draft model and stale document embed
+CONFIRMED: baseline eligible with draft diagram and stale embedding
+
+stdout | tmp/audit-2026-09-20/store-probes.test.ts > AUD-02 reproduces missing downstream approval invalidation on direct requirement edits
+CONFIRMED: requirement returns to draft; linked document stays approved
+
+stdout | tmp/audit-2026-09-20/store-probes.test.ts > AUD-03 reproduces baseline scope coupling across goals
+CONFIRMED: draft in another goal blocks whole-project baseline
+
+ ✓ tmp/audit-2026-09-20/store-probes.test.ts (4 tests) 4ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  18:51:22
+   Duration  334ms (transform 46ms, setup 0ms, collect 67ms, tests 4ms, environment 0ms, prepare 46ms)
+

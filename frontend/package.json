@@ -1,0 +1,32 @@
+{
+  "name": "ba-mate-frontend",
+  "private": true,
+  "version": "0.4.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "6.0.5",
+    "docx": "9.7.1",
+    "idb-keyval": "6.3.0",
+    "jspdf": "4.2.1",
+    "jszip": "3.10.1",
+    "lucide-react": "1.28.0",
+    "mermaid": "11.16.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router-dom": "7.18.2",
+    "typescript": "7.0.2",
+    "vite": "8.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "jsdom": "26.1.0",
+    "vitest": "3.2.7"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "frontend/src/App.tsx": "742d20c8c5c7fc8da4dce72132fe2218372a369ba6d64e534505cf2bfed7d4d8",
+  "frontend/src/store.ts": "89f7068f099209057a4483ec8e0c1ca7cfea2255e0682d40c941cf811f9950d0",
+  "frontend/src/connected.tsx": "f469470ac88f50891722a10e81473e74aeae1e236d9aca05f56d54818cfe0616",
+  "frontend/src/exporters.ts": "a8db04291bf19c128e34cd1d368aa56350a3a6a32341bd23eabff361567f8754",
+  "frontend/src/modelGateway.ts": "ad3f7e6910b21e60ce3cfabb0ce9e24e8fd7eb360b8d18578a27c50c56de5fce",
+  "frontend/src/research.ts": "617cedeae28f5f61e0fac5b3d6162f54f440bf21523a0e7f5db89b83238db99b",
+  "frontend/src/workflow.ts": "7357ce4d688e788f4f2f6663b94f09155954fe8c773734052d59ace4c777206c",
+  "frontend/src/WorkflowWorkbench.tsx": "3e2eff969d026d81768f29c4df49458d2692f7e4674ffc9905250af9dd57fb9c",
+  "backend/app/main.py": "a7a618db8683085d2af30718f98da149e4b820453c3e29cc16d826f1ea11ba75",
+  "backend/app/workflow.py": "0364d5b64e540808e2e9797e8d3aef0be4130762187113163c7831c5ed4b933c",
+  "backend/app/providers.py": "0874130898c4f6da3558fc0e6c4edabf6d19be40417997545f36ca58bdf27059",
+  "backend/app/persistence.py": "2bab87284cb59eed1f4ac9f5a6ecfad69e4ff0d755d0520fa2509ac42f762dcc",
+  "desktop/main.cjs": "584170e29d56fa4c2bc6f9b17478919e74ef6b371d3dc7e179e235803f1f9d86",
+  "desktop/package.json": "098d28ee7cc0669b5a4a3f055a95260e72aa05bef01d2a8fad1b539a1af68e10"
+}
