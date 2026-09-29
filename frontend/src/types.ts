@@ -89,13 +89,14 @@ export interface ArtifactProposal {
 export interface Source {
   content?: string;
   originalBase64?: string;
+  relativePath?: string;
   sha256?: string;
   version?: number;
   passages?: { locator: string; text: string }[];
   extractionLimitations?: string[];
   id: string;
   name: string;
-  type: "PDF" | "DOCX" | "TXT" | "Image" | "Policy";
+  type: "PDF" | "DOCX" | "TXT" | "Spreadsheet" | "Image" | "Audio" | "Video" | "Policy";
   status: "Analyzed" | "Needs review" | "Excluded";
   classification: "Project only" | "Confidential" | "Public";
   provenance: string;
@@ -479,6 +480,9 @@ export interface Project {
   gateIndex: number;
   health: number;
   folderName: string;
+  workspaceId?: string;
+  workspaceKind?: "managed" | "selected" | "browser";
+  workspacePath?: string;
   template: string;
   governancePacks: string[];
   sources: Source[];

@@ -13,6 +13,7 @@ from . import runtime
 from .contracts import RunRequest
 from .evidence import SourceUpload, extract_source
 from .persistence import read_workspace, save_workspace
+from .project_files import ProjectFolderCreate, ProjectFilesWrite, create_project_folder, write_project_files
 from .workflow import execute
 from .providers import ModelProvider
 from .qualification import qualify_profile, record_human_review
@@ -101,6 +102,14 @@ def review_qualification(value: QualificationReviewRequest):
 @app.post('/api/sources/extract')
 async def source(request: SourceUpload):
     return await run_in_threadpool(extract_source, request)
+
+@app.post('/api/project-folders')
+async def project_folder(request: ProjectFolderCreate):
+    return await run_in_threadpool(create_project_folder, request)
+
+@app.post('/api/project-folders/{workspace_id}/files')
+async def project_folder_files(workspace_id: str, request: ProjectFilesWrite):
+    return await run_in_threadpool(write_project_files, workspace_id, request)
 
 class WorkspaceSave(BaseModel):
     expected_revision: int = Field(ge=0)

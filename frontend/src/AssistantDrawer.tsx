@@ -399,6 +399,7 @@ export function AssistantDrawer({
               <b>Request not completed</b>
               <small>{requestError}</small>
             </span>
+            <button onClick={() => onNavigate("/settings")}>Settings</button>
             <button onClick={() => setRequestError("")}>Dismiss</button>
           </div>
         )}

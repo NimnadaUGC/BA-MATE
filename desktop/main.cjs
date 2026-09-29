@@ -35,7 +35,18 @@ async function start() {
   if (!ready) throw new Error('The local service did not become ready. Check that the application package contains its service and frontend.');
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
-  window = new BrowserWindow({ width: 1380, height: 900, minWidth: 900, minHeight: 650, show: false, title: 'BA Mate', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  const { ipcMain } = require('electron');
+  ipcMain.handle('ba-mate:choose-project-folder', async () => {
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Choose a BA Mate project folder',
+      properties: ['openDirectory', 'createDirectory'],
+      buttonLabel: 'Use this folder',
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const selectedPath = path.resolve(result.filePaths[0]);
+    return { name: path.basename(selectedPath), path: selectedPath };
+  });
+  window = new BrowserWindow({ width: 1380, height: 900, minWidth: 900, minHeight: 650, show: false, title: 'BA Mate', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
   window.webContents.on('will-prevent-unload', event => {

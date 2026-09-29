@@ -51,9 +51,54 @@ class RealWorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('Actor | Analyst', response.json()['content'])
 
-    def test_images_are_not_misrepresented_as_processed_text(self):
+    def test_media_is_preserved_without_being_misrepresented_as_processed_text(self):
         response = self.client.post('/api/sources/extract', json={'name': 'scan.png', 'data': base64.b64encode(b'fake').decode()})
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['media_kind'], 'image')
+        self.assertFalse(response.json()['extractable'])
+        self.assertEqual(response.json()['content'], '')
+
+    def test_csv_is_extracted_and_audio_is_preserved(self):
+        csv_response = self.client.post('/api/sources/extract', json={'name': 'requirements.csv', 'data': base64.b64encode(b'id,status\nFR-1,Open').decode()})
+        self.assertEqual(csv_response.status_code, 200)
+        self.assertIn('FR-1,Open', csv_response.json()['content'])
+        audio_response = self.client.post('/api/sources/extract', json={'name': 'interview.mp3', 'data': base64.b64encode(b'fake-audio').decode()})
+        self.assertEqual(audio_response.status_code, 200)
+        self.assertEqual(audio_response.json()['media_kind'], 'audio')
+        self.assertFalse(audio_response.json()['extractable'])
+
+    def test_excel_workbook_is_extracted(self):
+        from openpyxl import Workbook
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'Requirements'
+        sheet.append(['ID', 'Status'])
+        sheet.append(['FR-1', 'Open'])
+        buffer = io.BytesIO(); workbook.save(buffer)
+        response = self.client.post('/api/sources/extract', json={'name': 'requirements.xlsx', 'data': base64.b64encode(buffer.getvalue()).decode()})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['media_kind'], 'spreadsheet')
+        self.assertIn('FR-1 | Open', response.json()['content'])
+
+    def test_project_folder_receives_uploaded_originals(self):
+        selected = Path(self.temp.name) / 'selected-project'
+        create = self.client.post('/api/project-folders', json={'project_id': 'project-A', 'project_name': 'Example', 'selected_path': str(selected)})
+        self.assertEqual(create.status_code, 200, create.text)
+        workspace_id = create.json()['workspace_id']
+        write = self.client.post(f'/api/project-folders/{workspace_id}/files', json={'files': [{'name': 'notes.csv', 'relative_path': 'workshops/notes.csv', 'data': base64.b64encode(b'a,b\n1,2').decode()}]})
+        self.assertEqual(write.status_code, 200, write.text)
+        self.assertEqual((selected / 'sources' / 'workshops' / 'notes.csv').read_bytes(), b'a,b\n1,2')
+        duplicate = self.client.post(f'/api/project-folders/{workspace_id}/files', json={'files': [{'name': 'notes.csv', 'relative_path': 'workshops/notes.csv', 'data': base64.b64encode(b'different').decode()}]})
+        self.assertEqual(duplicate.status_code, 200, duplicate.text)
+        self.assertEqual((selected / 'sources' / 'workshops' / 'notes (1).csv').read_bytes(), b'different')
+
+    def test_project_folder_blocks_relative_path_escape(self):
+        create = self.client.post('/api/project-folders', json={'project_id': 'project-A', 'project_name': 'Example'})
+        workspace_id = create.json()['workspace_id']
+        write = self.client.post(f'/api/project-folders/{workspace_id}/files', json={'files': [{'name': 'safe.txt', 'relative_path': '../../safe.txt', 'data': base64.b64encode(b'safe').decode()}]})
+        self.assertEqual(write.status_code, 200, write.text)
+        managed = Path(self.temp.name) / 'projects'
+        self.assertEqual(list(managed.rglob('safe.txt'))[0].parent.name, 'sources')
 
     def test_workspace_conflicts_do_not_overwrite_saved_work(self):
         first = {'schemaVersion': 6, 'projects': [{'id': 'A', 'name': 'Actual project'}]}

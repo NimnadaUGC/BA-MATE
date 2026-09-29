@@ -38,7 +38,6 @@ import {
   Trash2,
   Underline,
   Undo2,
-  WandSparkles,
   X,
   ZoomIn,
   ZoomOut,
@@ -1432,7 +1431,7 @@ export function ConnectedConversations({
       <div className="page-header">
         <div>
           <span className="eyebrow">Typed project context</span>
-          <h1>Conversations</h1>
+          <h1>Ask BA Mate</h1>
           <p>
             Discuss any project object with visible provenance and reviewable
             changes.
@@ -2013,19 +2012,6 @@ export function ConnectedDiagrams({
           </p>
         </div>
         <div className="page-actions">
-          <Button
-            onClick={() =>
-              setProposal({
-                before: source,
-                after: source.replace(
-                  "Human review",
-                  "Human review and record rationale",
-                ),
-              })
-            }
-          >
-            <WandSparkles size={16} /> Example wording revision
-          </Button>
           <Button onClick={save}>
             <Save size={16} /> Save version
           </Button>
@@ -2184,7 +2170,7 @@ export function ConnectedDiagrams({
                 <button onClick={exportPng}>PNG</button>
                 <button
                   onClick={() =>
-                    void mockPdf(svg, diagram)
+                    void generateDiagramPdf(svg, diagram)
                       .then(() =>
                         notify(
                           "The PDF download has started.",
@@ -2424,7 +2410,7 @@ export function ConnectedDiagrams({
   );
 }
 
-async function mockPdf(svg: string, diagram: Diagram) {
+async function generateDiagramPdf(svg: string, diagram: Diagram) {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const item = new window.Image();
     const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
@@ -2535,6 +2521,7 @@ export function ConnectedDocuments({
   const [selected, setSelected] = useState<string | undefined>(
     project.documents[0]?.id,
   );
+  const [documentMode, setDocumentMode] = useState<"edit" | "review">("edit");
   const [exportSelection, setExportSelection] = useState<ExportSelection>({ kind: "working" });
   const document = project.documents.find((d) => d.id === selected);
   const [query, setQuery] = useState("");
@@ -2976,6 +2963,7 @@ export function ConnectedDocuments({
                 <Pill tone="purple">{document.id}</Pill>
                 <input
                   aria-label="Document name"
+                  readOnly={documentMode === "review"}
                   value={document.name}
                   onChange={(e) =>
                     update((p) => {
@@ -2988,6 +2976,10 @@ export function ConnectedDocuments({
                 <span>v{document.version}</span>
               </div>
               <div>
+                <div className="segmented document-mode" role="group" aria-label="Document mode">
+                  <button className={documentMode === "edit" ? "active" : ""} onClick={() => setDocumentMode("edit")}>Edit</button>
+                  <button className={documentMode === "review" ? "active" : ""} onClick={() => setDocumentMode("review")}>Review</button>
+                </div>
                 <Button onClick={undo} disabled={!undoStack.length}>
                   <Undo2 /> Undo
                 </Button>
@@ -3056,11 +3048,11 @@ export function ConnectedDocuments({
                   {s.title}
                 </a>
               ))}
-              <button onClick={addSection}>
+              <button onClick={addSection} disabled={documentMode === "review"}>
                 <Plus /> Add section
               </button>
             </nav>
-            <article className="document-canvas">
+            <article className={`document-canvas ${documentMode === "review" ? "review-mode" : "edit-mode"}`}>
               <header>
                 <span>BA MATE · CONTROLLED ARTIFACT</span>
                 <h1>{document.name}</h1>
@@ -3074,6 +3066,7 @@ export function ConnectedDocuments({
                   <div className="section-heading">
                     <input
                       aria-label={`Section title: ${section.title}`}
+                      readOnly={documentMode === "review"}
                       value={section.title}
                       onChange={(e) =>
                         update((p) => {
@@ -3096,12 +3089,12 @@ export function ConnectedDocuments({
                       <div
                         className={`document-block block-${block.type}`}
                         key={block.id}
-                        draggable
+                        draggable={documentMode === "edit"}
                         onDragStart={() => setDragBlock(block.id)}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={() => dropBlock(section.id, block.id)}
                       >
-                        <div className="block-toolbar">
+                        {documentMode === "edit" && <div className="block-toolbar">
                           <select
                             aria-label={`Block type in ${section.title}`}
                             value={block.type}
@@ -3212,7 +3205,7 @@ export function ConnectedDocuments({
                           >
                             <Trash2 />
                           </button>
-                        </div>
+                        </div>}
                         {block.type === "diagram" && block.embedding ? (
                           <DiagramBlock
                             block={block}
@@ -3224,6 +3217,7 @@ export function ConnectedDocuments({
                         ) : (
                           <textarea
                             aria-label={`${blockLabel[block.type]} content in ${section.title}`}
+                            readOnly={documentMode === "review"}
                             className={block.style ?? "normal"}
                             style={{ textAlign: block.alignment ?? "left" }}
                             value={block.content}
@@ -3240,6 +3234,7 @@ export function ConnectedDocuments({
                             ? block.linkedIds.join(", ")
                             : "No artifact links"}{" "}
                           <button
+                            disabled={documentMode === "review"}
                             aria-expanded={
                               linkPicker?.sectionId === section.id &&
                               linkPicker?.blockId === block.id

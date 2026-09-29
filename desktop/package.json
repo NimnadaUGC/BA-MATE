@@ -11,7 +11,7 @@
     "appId": "research.bamate.desktop",
     "productName": "BA Mate",
     "directories": {"output": "../release"},
-    "files": ["main.cjs", "package.json"],
+    "files": ["main.cjs", "preload.cjs", "package.json"],
     "extraResources": [{"from": "../frontend/dist", "to": "frontend"}, {"from": "../build/service/ba-mate-service", "to": "service"}],
     "mac": {"category": "public.app-category.productivity", "target": ["zip"], "identity": null},
     "win": {"target": ["nsis"]},

@@ -16,7 +16,7 @@ def run(args, directory=ROOT):
 run([NPM, 'ci'], ROOT / 'frontend')
 run([NPM, 'run', 'build'], ROOT / 'frontend')
 run([PYTHON, '-m', 'pip', 'install', 'pyinstaller==6.22.2'])
-run([PYTHON, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir', '--name', 'ba-mate-service', '--distpath', ROOT / 'build/service', '--workpath', ROOT / 'build/pyinstaller', '--specpath', ROOT / 'build', '--paths', ROOT / 'backend', '--collect-all', 'uvicorn', ROOT / 'backend/desktop_entry.py'])
+run([PYTHON, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir', '--name', 'ba-mate-service', '--distpath', ROOT / 'build/service', '--workpath', ROOT / 'build/pyinstaller', '--specpath', ROOT / 'build', '--paths', ROOT / 'backend', '--collect-all', 'uvicorn', '--collect-all', 'pypdf', '--collect-all', 'docx', '--collect-all', 'openpyxl', '--collect-all', 'xlrd', ROOT / 'backend/desktop_entry.py'])
 run([NPM, 'ci'], ROOT / 'desktop')
 run([NPM, 'run', 'package' if '--dir' in sys.argv else 'dist'], ROOT / 'desktop')
 print('Desktop build created in', ROOT / 'release')

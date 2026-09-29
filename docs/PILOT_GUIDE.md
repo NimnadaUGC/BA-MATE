@@ -1,8 +1,8 @@
 # Local pilot guide — BA Mate 0.4
 
-This release is a working local research prototype. Use a synthetic rehearsal before inviting participants. Keep the research framework version, application version and prompt version fixed within a comparison round. Record any later change as a new iteration.
+This release is a working local research beta. Complete a synthetic rehearsal before inviting participants. Keep the research framework version, application version and prompt version fixed within a comparison round. Record any later change as a new iteration.
 
-**21 September 2026 readiness notice:** the [current audit](audit/FEATURE_AUDIT_2026_09_21.md) reproduced approval, synchronization and document-undo defects. This guide is for supervised developer rehearsal until the [release gates](audit/IMPLEMENTATION_BACKLOG.md) pass. Local approval labels currently do not establish full F4 conformance. Avoid cross-document undo in valuable work until repaired.
+The interface now enforces the six workflow stages, goal-scoped approved baselines and evaluated-stage feedback. Approval roles remain a local workflow convention rather than verified external identity. Use **Beta guide** in the main navigation for the participant-facing orientation and this document for installation and study administration.
 
 ## Installation
 
@@ -17,7 +17,7 @@ python3 start.py
 
 On Windows use `py` instead of `python3`. After setup, the supplied Start BA Mate launcher also works. Keep its service window open during a session. A port conflict can be avoided with `python3 start.py --port 8001`. In development, keep the interface server on port 5173 and backend on 8000, or set `VITE_BA_MATE_API_URL` when building.
 
-The workspace is stored in `~/.ba-mate/workspace.sqlite3`; connection settings are in `~/.ba-mate/provider.json`. `BA_MATE_DATA_DIR` selects a different data folder. Wait for “Saved on this device” before closing. In **Settings → Local data**, choose a project and use **Export project backup** to create a private ZIP. **Restore project backup** validates the ZIP and adds it as a separate local project; it never overwrites the current workspace. Content backups are private. The current research JSON still needs identifier/metadata review and is not an approved anonymous central-upload format.
+The workspace is stored in `~/.ba-mate/workspace.sqlite3`; managed project folders are created in `~/.ba-mate/projects`, and connection settings are in `~/.ba-mate/provider.json`. A selected project folder is used directly. Uploaded originals are copied into that folder's `sources` directory, including relative subfolders when a folder of files is imported. `BA_MATE_DATA_DIR` selects a different managed data folder. Wait for “Saved on this device” before closing. In **Settings → Local data**, choose a project and use **Export project backup** to create a private ZIP. **Restore project backup** validates the ZIP and adds it as a separate local project; it never overwrites the current workspace. Content backups are private. The current research JSON still needs identifier/metadata review and is not an approved anonymous central-upload format.
 
 To build native packages on a matching OS and CPU architecture:
 
@@ -37,15 +37,16 @@ The agreed deployment uses existing Register.lk Core shared hosting for a small 
 
 ## Rehearsal workflow
 
-1. Create a new project and goal using a synthetic business case. New projects start without demonstration artifacts.
-2. Import a text-based PDF, DOCX or text file. Inspect extracted text, original download and extraction limitations. Approve the source only after reviewing it. Scanned images require an external transcription/OCR step; the application rejects them instead of pretending to have read them.
+1. Open **Beta guide**, then create a new project and goal using a synthetic business case. New projects start without demonstration artifacts.
+2. Import PDF, DOCX, text, Markdown, CSV, JSON or Excel material, or attach common image, audio and video files. Inspect extracted text, original download and extraction limitations. Media and scanned PDFs are preserved but cannot be approved as searchable evidence until a transcription or OCR copy is supplied.
 3. Use “Find gaps and ask questions”. Review the questions and add selected items. Record actual stakeholder answers; never treat model suggestions as answers.
 4. Draft requirements/stories. Compare against the recorded answers beside the proposal. Correct wording and evidence IDs. Accept only selected supported items. Original output and human edits remain separately recorded.
 5. Review working artifacts, acceptance criteria and trace links. AI-generated links begin as Pending. Mark them Verified only after checking semantic support. Address blocking questions and findings.
 6. Try diagram, document, quality-review and change-impact tasks. The proposal includes a diagram preview. Mermaid syntax is checked before offering a diagram, but its business meaning still requires BA review.
-7. Submit requirements, stories and documents for review. Baseline approval requires authority, no blockers, reviewed statuses and a verified evidence path for every requirement/story. The local role is a workflow convention, not verified stakeholder identity. Record stakeholder agreement separately according to the study protocol.
-8. Create a baseline, alter a linked clarification answer, and confirm dependent approvals/trace links require revalidation. Restore a snapshot and confirm content returns as drafts while a recovery snapshot preserves the previous work.
-9. Export a full project ZIP from **Settings → Local data**, restore it as a new project, and compare sources, answers, artifacts and history. External processing is disabled on import. This remains an implementation acceptance check before real participant work.
+7. Use the completion checklist in **Guided workflow**. It links directly to missing work and prevents moving to the next stage until the current outcome is complete. During an evaluation run, submit **Stage evaluation** before advancing.
+8. Submit requirements, stories and documents for review. After Validate is complete, create the baseline from **History & approved versions**. Baseline approval requires authority, no blockers, reviewed statuses and a verified evidence path for every requirement/story. The local role is a workflow convention, not verified stakeholder identity. Record stakeholder agreement separately according to the study protocol.
+9. Alter a linked clarification answer and confirm dependent approvals/trace links require revalidation. Restore a snapshot and confirm content returns as drafts while a recovery snapshot preserves the previous work.
+10. Export a full project ZIP from **Settings → Local data**, restore it as a new project, and compare sources, answers, artifacts and history. External processing is disabled on import. This remains an implementation acceptance check before real participant work.
 
 ## Research controls
 
@@ -59,7 +60,7 @@ Prioritise usability and defect discovery in the first pilot. Do not assume refi
 
 ## Remaining release boundaries
 
-- Public authenticated collaboration, role enforcement across separate accounts, invitations and external project-management integrations remain outside this local release. Some older peripheral controls still show explicit prototype notices.
+- Public authenticated collaboration, role enforcement across separate accounts, invitations and external project-management integrations remain outside this local release.
 - No OCR, speech transcription or hosted model provisioning is implemented.
 - Source/identifier checks and quantity reminders do not establish factual correctness, compliance or absence of hallucination.
 - Baselines are immutable through the normal application update path; SQLite and ZIP files are not cryptographically tamper-evident records.

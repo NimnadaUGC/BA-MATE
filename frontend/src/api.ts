@@ -27,12 +27,12 @@ export type ProviderSettings = {
   timeout_seconds: number; temperature: number; key_storage?: string;
 };
 export async function importSource(file: File) {
-  if (file.size > 10 * 1024 * 1024) throw new Error('Choose a file no larger than 10 MB.');
+  if (file.size > 25 * 1024 * 1024) throw new Error('Choose a file no larger than 25 MB.');
   const data = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(',')[1]);
     reader.onerror = () => reject(new Error('This file could not be read.'));
     reader.readAsDataURL(file);
   });
-  return api<{ content: string; passages: { locator: string; text: string }[]; sha256: string; original_base64: string; limitations: string[] }>('/api/sources/extract', { method: 'POST', body: JSON.stringify({ name: file.name, data }) });
+  return api<{ content: string; passages: { locator: string; text: string }[]; sha256: string; original_base64: string; limitations: string[]; media_kind: 'document' | 'spreadsheet' | 'image' | 'audio' | 'video'; extractable: boolean }>('/api/sources/extract', { method: 'POST', body: JSON.stringify({ name: file.name, data }) });
 }

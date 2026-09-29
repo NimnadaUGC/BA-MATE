@@ -50,7 +50,7 @@ const baseProject = (id:string,name:string,domain:string,color:string,gateIndex:
 
 export const seedState: WorkspaceState = {schemaVersion:5,
   projects:[baseProject('loan','Mobile loan onboarding','Retail banking','#7158d9',4),baseProject('leave','Employee leave portal','People operations','#2f8f79',5),baseProject('returns','Smart returns workflow','E-commerce','#d27a38',3)],
-  evaluationRuns:[{id:'EVAL-014',caseId:'CASE-03',condition:'Proposed workflow',evaluatorCode:'BA-014',datasetVersion:'2026.07',prototypeVersion:'BA Mate 0.2.0',model:'mock/qwen3-8b',promptVersion:'adaptive-ba-v3',duration:'12:48',status:'Complete'},{id:'EVAL-015',caseId:'CASE-04',condition:'Generic AI',evaluatorCode:'BA-015',datasetVersion:'2026.07',prototypeVersion:'BA Mate 0.2.0',model:'mock/qwen3-8b',promptVersion:'generic-v1',duration:'00:00',status:'Ready'}],
+  evaluationRuns:[{id:'EVAL-014',caseId:'CASE-03',condition:'Proposed workflow',evaluatorCode:'BA-014',datasetVersion:'2026.07',prototypeVersion:'BA Mate 0.2.0',model:'synthetic/demo-model',promptVersion:'adaptive-ba-v3',duration:'12:48',status:'Complete'},{id:'EVAL-015',caseId:'CASE-04',condition:'Generic AI',evaluatorCode:'BA-015',datasetVersion:'2026.07',prototypeVersion:'BA Mate 0.2.0',model:'synthetic/demo-model',promptVersion:'generic-v1',duration:'00:00',status:'Ready'}],
   telemetryEvents:[],
   stageFeedback:[]
 };
