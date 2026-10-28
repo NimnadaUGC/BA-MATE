@@ -78,6 +78,10 @@ export const migrateWorkspace = (input: unknown): WorkspaceState => {
       gate: goal.gate ?? project.gate ?? "Setup",
       gateIndex: goal.gateIndex ?? project.gateIndex ?? 0,
       sourceIds: goal.sourceIds ?? [],
+      sourceRevisionPins: goal.sourceRevisionPins ?? Object.fromEntries((goal.sourceIds ?? []).flatMap(id => {
+        const source = (project.sources ?? []).find(item => item.id === id);
+        return source?.approved && source.status === "Analyzed" && source.sha256 ? [[id, source.sha256]] : [];
+      })),
       deliverables: goal.deliverables ?? [],
     }));
     if (
@@ -235,7 +239,7 @@ export class IndexedDbWorkspaceRepository implements WorkspaceRepository {
     }
     project.id = `imported-${crypto.randomUUID()}`;
     project.cloudAllowed = false;
-    addAudit(project, "Imported project package", project.id, "All evidence, history and baselines restored. External processing disabled on this device.");
+    addAudit(project, "Imported project package", project.id, "Project records, history and baselines restored. Sources without retained originals require review. External processing disabled on this device.");
     return migrateWorkspace({ schemaVersion: 7, projects: [project], evaluationRuns: [], telemetryEvents: [], stageFeedback: [] }).projects[0];
   }
 }
@@ -505,6 +509,18 @@ export function enforceWorkingVersions(before: Project, after: Project) {
     changed.add("PROJECT-BRIEF");
     after.briefVersion = (before.briefVersion ?? 1) + 1;
   }
+  if (JSON.stringify(before.governancePacks) !== JSON.stringify(after.governancePacks)) {
+    // A new policy can change the eligibility of every working deliverable.
+    // Keep historical baselines, but require a fresh human impact review.
+    for (const item of [...after.requirements, ...after.stories, ...after.diagrams, ...after.documents, ...after.checks]) changed.add(item.id);
+  }
+  for (const goal of after.goals) {
+    const previous = before.goals.find(item => item.id === goal.id);
+    if (!previous || previous.description === goal.description && JSON.stringify(previous.sourceIds) === JSON.stringify(goal.sourceIds) &&
+        JSON.stringify(previous.sourceRevisionPins ?? {}) === JSON.stringify(goal.sourceRevisionPins ?? {})) continue;
+    for (const item of [...after.requirements, ...after.stories, ...after.clarifications, ...after.checks, ...after.diagrams, ...after.documents])
+      if (item.goalId === goal.id || !item.goalId && after.activeGoalId === goal.id) changed.add(item.id);
+  }
   const content = (value: unknown) => JSON.stringify(value, (key, item) =>
     ["status", "approvalStatus", "version", "comments", "syncStatus", "versions", "receipts"].includes(key) ? undefined : item,
   );
@@ -558,6 +574,7 @@ export function enforceWorkingVersions(before: Project, after: Project) {
     if (changed.has(item.id) && item.syncStatus === "Synced") item.syncStatus = "Out of sync";
   }
   for (const diagram of after.diagrams) if (changed.has(diagram.id)) { diagram.status = "Draft"; diagram.approvalStatus = "Draft"; }
+  for (const check of after.checks) if (changed.has(check.id) && check.status === "Passed") check.status = "Warning";
   // Old snapshot payloads are immutable even when a UI edit changes working records.
   for (const snapshot of before.versions.filter(v => v.locked)) {
     const index = after.versions.findIndex(v => v.id === snapshot.id);

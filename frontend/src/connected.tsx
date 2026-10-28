@@ -57,6 +57,8 @@ import type {
   UserStory as Story,
 } from "./types";
 import { addAudit, approvalIssuesForArtifact, downloadBlob, eligibleForDocumentSync } from "./store";
+import { goalSelectableSource } from "./projectSources";
+import { verifySourceOriginal } from "./workspaceFiles";
 import { srsContent, syncProposalIsStale, syncProvenance } from "./controlledChanges";
 import { exportDeveloperMarkdown, exportDocx, exportJson, exportMarkdown, exportPdf, type ExportSelection } from "./exporters";
 import { buildModelRequest, requestModelCompletion } from "./modelGateway";
@@ -1229,6 +1231,11 @@ export function ConnectedConversations({
   const [sending, setSending] = useState(false);
   const [conversationQuery, setConversationQuery] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pendingAnswer, setPendingAnswer] = useState<string>();
+  const [answerAuthority, setAnswerAuthority] = useState("");
+  const [answerConfirmed, setAnswerConfirmed] = useState(false);
+  const answerDialogRef = useRef<HTMLDivElement>(null);
+  useDialogAccessibility(answerDialogRef, () => setPendingAnswer(undefined), Boolean(pendingAnswer));
   const convo = project.conversations.find((c) => c.id === selected);
   const visibleConversations = project.conversations.filter((conversation) =>
     conversation.title.toLowerCase().includes(conversationQuery.toLowerCase()),
@@ -1310,7 +1317,7 @@ export function ConnectedConversations({
       project,
       references: used,
       prompt,
-      task: "project-conversation",
+      task: "conversation-action",
       history: convo.messages.slice(-20).map(m => ({ role: m.role, content: m.text })),
     });
     setSending(true);
@@ -1330,14 +1337,26 @@ export function ConnectedConversations({
 
       update((p) => {
         const c = p.conversations.find((x) => x.id === convo.id)!;
+        const action = response.actionProposal;
+        const validRequirement = action?.action_kind === "requirement-revision" && p.requirements.some(item => item.id === action.target_id && item.statement === action.before);
+        const proposal = action && action.action_kind !== "none" && (action.action_kind !== "requirement-revision" || validRequirement)
+          ? { id: uid("PROP"), kind: action.action_kind, target: action.target_id || "Project",
+              goalId: p.activeGoalId,
+              before: action.before, after: action.after, status: "pending" as const,
+              references: used.filter(ref => action.reference_ids.includes(ref.id)),
+              impact: [action.rationale] }
+          : undefined;
         c.messages.push({
           id: uid("M"),
           role: "assistant",
-          text: response.text,
+          text: action?.action_kind === "requirement-revision" && !validRequirement
+            ? `${response.text}\n\nThe suggested edit could not be attached because the requirement has changed or was not found. Ask for a fresh proposal.`
+            : response.text,
           references: used.filter((reference) =>
             response.receipt.includedReferenceIds.includes(reference.id),
           ),
           contextReceipt: response.receipt,
+          proposal,
         });
         c.updated = "Just now";
         addAudit(
@@ -1381,39 +1400,116 @@ export function ConnectedConversations({
       setSending(false);
     }
   };
-  const accept = (messageId: string, status: "accepted" | "rejected") => {
+  const accept = async (messageId: string, status: "accepted" | "rejected") => {
+    const incomingMessage = convo?.messages.find(message => message.id === messageId);
+    const incoming = incomingMessage?.proposal;
+    if (!incoming || incoming.status !== "pending") return;
+    if (status === "accepted" && incomingMessage?.backgroundSuggestionKey &&
+        !incomingMessage.backgroundSuggestionKey.startsWith(`${project.agentRun?.signature ?? ""}:`)) {
+      notify("Project context changed after BA Mate asked this question. Review the latest suggestions before tracking it.", "warning", "Question needs a fresh review");
+      return;
+    }
+    if (status === "accepted" && incoming.kind === "requirement-revision" && !project.requirements.some(item => item.id === incoming.target && item.statement === incoming.before)) {
+      notify("The requirement changed since BA Mate proposed this edit. Ask for a fresh proposal.", "warning", "Proposal is stale");
+      return;
+    }
+    if (status === "accepted" && incoming.kind === "governance-revision" && (['Core responsible BA', 'Human oversight & traceability'].includes(incoming.before) || (incoming.before && !project.governancePacks.includes(incoming.before)))) {
+      notify("This policy is protected or has changed. Review the policy list before applying a new proposal.", "warning", "Proposal is stale");
+      return;
+    }
+    if (status === "accepted" && incoming.kind === "goal-direction" && !project.goals.some(goal => goal.id === incoming.target && goal.description === incoming.before)) {
+      notify("The goal changed since this direction was proposed. Ask BA Mate to review the current goal.", "warning", "Proposal is stale"); return;
+    }
+    if (status === "accepted" && incoming.kind === "source-selection" && (!incoming.goalId || incoming.goalId !== project.activeGoalId)) {
+      notify("The active goal changed since BA Mate proposed this source selection. Ask for a fresh proposal.", "warning", "Proposal is stale"); return;
+    }
+    if (status === "accepted" && incoming.kind === "source-selection" && incoming.after === "include") {
+      const source = project.sources.find(item => item.id === incoming.target);
+      if (!project.activeGoalId || !source || !goalSelectableSource(source)) {
+        notify("Review the current source revision before selecting it for a goal.", "warning", "Source review required"); return;
+      }
+      try { await verifySourceOriginal(project, source); }
+      catch (error) { notify(error instanceof Error ? error.message : "The original could not be checked.", "warning", "Source review required"); return; }
+    }
+    if (status === "accepted" && incoming.kind === "clarification-answer") {
+      const question = project.clarifications.find(item => item.id === incoming.target);
+      if (!question || (question.answer ?? "") !== incoming.before) { notify("The clarification changed. Ask for a fresh proposal.", "warning", "Proposal is stale"); return; }
+      setAnswerAuthority(""); setAnswerConfirmed(false); setPendingAnswer(messageId); return;
+    }
     update((p) => {
       const c = p.conversations.find((x) => x.id === selected)!;
-      const proposal = c.messages.find((m) => m.id === messageId)?.proposal;
+      const message = c.messages.find((m) => m.id === messageId);
+      const proposal = message?.proposal;
       if (!proposal) return;
+      if (status === "accepted" && proposal.kind === "source-selection" &&
+          (!proposal.goalId || proposal.goalId !== p.activeGoalId ||
+            proposal.after === "include" && !p.sources.some(item => item.id === proposal.target &&
+              goalSelectableSource(item) && item.sha256 === project.sources.find(original => original.id === item.id)?.sha256))) return;
       proposal.status = status;
       if (status === "accepted") {
-        const req = p.requirements.find((r) => r.id === proposal.target);
-        if (req) {
-          if (proposal.before !== req.statement) throw new Error("This proposal is stale. Generate a new revision.");
+        const req = proposal.kind === "requirement-revision" ? p.requirements.find((r) => r.id === proposal.target) : undefined;
+        if (req && proposal.before === req.statement) {
           req.statement = proposal.after;
           req.status = "draft";
           req.version++;
           if (req.syncStatus === "Synced") req.syncStatus = "Out of sync";
           markDownstreamStale(p, req.id);
         }
+        if (proposal.kind === "clarification-question" && proposal.after.trim()) {
+          const id = uid("CQ");
+          p.clarifications.push({ id, priority: "Important", question: proposal.after.trim(), rationale: proposal.impact[0] ?? "Proposed in project conversation.", sourceId: proposal.references[0]?.id ?? "PROJECT-BRIEF", owner: "Business analyst", status: "Unanswered", suggestions: [], affects: [], goalId: p.activeGoalId });
+          addAudit(p, "Adopted chat clarification", id, proposal.after);
+        }
+        if (proposal.kind === "governance-revision") {
+          if (proposal.before) p.governancePacks = p.governancePacks.filter(pack => pack !== proposal.before);
+          if (proposal.after.trim()) p.governancePacks.push(proposal.after.trim());
+          p.governancePacks = [...new Set(p.governancePacks)];
+          addAudit(p, "Adopted chat governance change", "Project policies", `${proposal.before || "New policy"} → ${proposal.after || "Removed"}`);
+        }
+        if (proposal.kind === "goal-direction") {
+          const goal = p.goals.find(item => item.id === proposal.target);
+          if (goal && goal.description === proposal.before) {
+            goal.description = proposal.after.trim();
+            addAudit(p, "Steered goal from conversation", goal.id, proposal.after);
+          }
+        }
+        if (proposal.kind === "source-selection") {
+          const goal = p.goals.find(item => item.id === proposal.goalId && item.id === p.activeGoalId);
+          if (goal && (proposal.after !== "include" || p.sources.some(item => item.id === proposal.target && goalSelectableSource(item) && item.sha256 === project.sources.find(original => original.id === item.id)?.sha256))) {
+            const source = p.sources.find(item => item.id === proposal.target);
+            goal.sourceIds = proposal.after === "include"
+              ? [...new Set([...goal.sourceIds, proposal.target])]
+              : goal.sourceIds.filter(id => id !== proposal.target);
+            goal.sourceRevisionPins ??= {};
+            if (proposal.after === "include" && source?.sha256) goal.sourceRevisionPins[source.id] = source.sha256;
+            else delete goal.sourceRevisionPins[proposal.target];
+            const goalConversation = p.conversations.find(entry => entry.id === goal.conversationId);
+            if (goalConversation && source) goalConversation.context = proposal.after === "include"
+              ? [...goalConversation.context.filter(entry => entry.id !== source.id), { id: source.id, type: "Source", label: source.name, origin: "attached", removable: true, route: "sources" }]
+              : goalConversation.context.filter(entry => entry.id !== source.id);
+            addAudit(p, "Updated goal source selection", goal.id, `${proposal.target}: ${proposal.after}`);
+          }
+        }
         addAudit(
           p,
           "Accepted connected BA Mate proposal",
           proposal.target,
-          `Applied ${proposal.kind}; ${proposal.impact.length} downstream items checked.`,
+          `Applied ${proposal.kind} as a working change; review dependent items before approval.`,
         );
-      } else
+      } else {
+        if (message?.backgroundSuggestionKey)
+          p.dismissedAgentSuggestions = [...new Set([...(p.dismissedAgentSuggestions ?? []), message.backgroundSuggestionKey])];
         addAudit(
           p,
           "Rejected connected BA Mate proposal",
           proposal.target,
           "Proposal retained without changing project artifacts.",
         );
+      }
     });
     notify(
       status === "accepted"
-        ? "The reviewed proposal was applied to the working artifact; downstream links were checked."
+        ? "The reviewed proposal was applied to the working project. Dependent work may need review."
         : "The proposal was retained in the conversation without changing project data.",
       status === "accepted" ? "success" : "info",
       status === "accepted" ? "Proposal accepted" : "Proposal rejected",
@@ -1647,14 +1743,15 @@ export function ConnectedConversations({
                           <p>Impact: {m.proposal.impact.join(", ")}</p>
                           {m.proposal.status === "pending" && (
                             <footer>
-                              <Button onClick={() => accept(m.id, "rejected")}>
+                              <Button onClick={() => void accept(m.id, "rejected")}>
                                 Reject
                               </Button>
                               <Button
                                 primary
-                                onClick={() => accept(m.id, "accepted")}
+                                disabled={!!m.backgroundSuggestionKey && !m.backgroundSuggestionKey.startsWith(`${project.agentRun?.signature ?? ""}:`)}
+                                onClick={() => void accept(m.id, "accepted")}
                               >
-                                Accept reviewed change
+                                {m.backgroundSuggestionKey && !m.backgroundSuggestionKey.startsWith(`${project.agentRun?.signature ?? ""}:`) ? "Context changed" : m.proposal.kind === "clarification-question" ? "Track question" : "Accept reviewed change"}
                               </Button>
                             </footer>
                           )}
@@ -1722,6 +1819,7 @@ export function ConnectedConversations({
           onConfirm={deleteConversation}
         />
       )}
+      {pendingAnswer && convo && <div className="connected-modal-backdrop" role="presentation"><div ref={answerDialogRef} className="sync-modal connected-confirm-modal" role="dialog" aria-modal="true" aria-label="Confirm clarification answer"><header><div><span className="eyebrow">Human confirmation</span><h2>Record this clarification answer?</h2><p>BA Mate proposed how to record your message. Confirm the responsible person and the exact answer before it becomes a recorded decision.</p></div><button className="icon-button" aria-label="Close" onClick={() => setPendingAnswer(undefined)}><X /></button></header><div className="project-settings-fields" style={{ padding: 18 }}><p>{convo.messages.find(message => message.id === pendingAnswer)?.proposal?.after}</p><label className="editor-field"><span>Who confirmed this answer?</span><input value={answerAuthority} onChange={event => setAnswerAuthority(event.target.value)} placeholder="Stakeholder name or role" /></label><label className="setup-remote-choice"><input type="checkbox" checked={answerConfirmed} onChange={event => setAnswerConfirmed(event.target.checked)} /> I verified this answer with the responsible person</label></div><footer><Button onClick={() => setPendingAnswer(undefined)}>Cancel</Button><Button primary disabled={!answerAuthority.trim() || !answerConfirmed} onClick={() => { const messageId = pendingAnswer; update(p => { const c = p.conversations.find(item => item.id === convo.id); const proposal = c?.messages.find(message => message.id === messageId)?.proposal; if (!proposal || proposal.status !== "pending") return; const question = p.clarifications.find(item => item.id === proposal.target); if (!question || (question.answer ?? "") !== proposal.before) return; question.answer = proposal.after.trim(); question.status = "Answered"; proposal.status = "accepted"; addAudit(p, "Recorded stakeholder clarification", question.id, `Confirmed by ${answerAuthority.trim()}: ${question.answer}`); }); setPendingAnswer(undefined); notify("The confirmed answer was recorded. Linked work may need revalidation.", "success"); }}>Record confirmed answer</Button></footer></div></div>}
     </>
   );
 }

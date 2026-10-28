@@ -132,14 +132,22 @@ import {
   SOURCE_ACCEPT,
   chooseProjectFolder,
   createProjectWorkspace,
+  createProjectDirectories,
   ensureProjectWorkspace,
   isSupportedSourceName,
   relativePathForFile,
-  sourceStoredFile,
   sourceTypeForName,
   writeProjectFiles,
+  readFileForWorkspace,
+  readProjectOriginal,
+  getProjectAnalysis,
+  prepareProjectBackup,
+  restoreProjectWorkspace,
+  copyProjectToWorkspace,
+  verifySourceOriginal,
   type WorkspaceCandidate,
 } from "./workspaceFiles";
+import { goalSelectableSource, goalSourceCurrent, mergeProjectAnalysis, requestProjectAgentRun, surfaceBackgroundQuestion } from "./projectSources";
 const ConnectedArtifacts = lazy(() =>
   import("./connected").then((module) => ({
     default: module.ConnectedArtifacts,
@@ -331,6 +339,20 @@ function StatusBadge({ value }: { value: string }) {
           ? "warning"
           : "neutral";
   return <Badge tone={tone}>{value}</Badge>;
+}
+function SetupTip({ step, title, children }: { step: number; title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    setOpen(true);
+    const timer = window.setTimeout(() => setOpen(false), 6500);
+    return () => window.clearTimeout(timer);
+  }, [step]);
+  return <div className={classNames("setup-tip", open && "open")}>
+    <button type="button" aria-expanded={open} aria-label={`${title} information`} onClick={() => setOpen(value => !value)}>
+      <CircleHelp size={18} /><span>{title}</span>
+    </button>
+    <div className="setup-tip-content" aria-hidden={!open}><p>{children}</p></div>
+  </div>;
 }
 function PageHeader({
   eyebrow,
@@ -781,15 +803,68 @@ function AppTopbar({
 function ProjectOverview({
   project,
   go,
+  update,
 }: {
   project: Project;
   go: (section: string) => void;
+  update: (fn: (p: Project) => void) => void;
 }) {
   const coverage = traceCoverage(project);
   const openClarifications = project.clarifications.filter(
     (q) => q.status !== "Answered" && q.status !== "Discarded",
   ).length;
   const goal = activeGoal(project);
+  const [retryingSuggestions, setRetryingSuggestions] = useState(false);
+  const [pastAgentRuns, setPastAgentRuns] = useState<NonNullable<Project["agentRun"]>[] | null>(null);
+  const [pastAgentRunError, setPastAgentRunError] = useState("");
+  const [pastAgentRunsOpen, setPastAgentRunsOpen] = useState(false);
+  useEffect(() => {
+    if (!pastAgentRunsOpen || !project.workspaceId) return;
+    let active = true;
+    setPastAgentRuns(null);
+    setPastAgentRunError("");
+    void api<NonNullable<Project["agentRun"]>[]>(`/api/project-agents/${encodeURIComponent(project.workspaceId)}/history`)
+      .then(runs => { if (active) setPastAgentRuns([...(project.agentHistory ?? []), ...runs]); })
+      .catch(error => { if (active) setPastAgentRunError(error instanceof Error ? error.message : "Earlier proposals could not be loaded."); });
+    return () => { active = false; };
+  }, [project.workspaceId, project.agentRun?.signature, pastAgentRunsOpen]);
+  const failedRole = Object.values(project.agentRun?.roles ?? {}).some(role => role.status === "failed");
+  const retrySuggestions = async () => {
+    if (!project.workspaceId || !project.workspaceKind || retryingSuggestions) return;
+    setRetryingSuggestions(true);
+    try {
+      const analysis = await getProjectAnalysis({ workspaceId: project.workspaceId, workspaceKind: project.workspaceKind,
+        folderName: project.folderName, displayPath: project.workspacePath });
+      const run = await requestProjectAgentRun(project, analysis, true);
+      update(p => { p.agentRun = run; });
+      appNotice("BA Mate is retrying the background suggestions with the current project context.", "info", "Suggestions restarted");
+    } catch (error) {
+      appNotice(error instanceof Error ? error.message : "The suggestions could not be restarted.", "warning", "Retry unavailable");
+    } finally { setRetryingSuggestions(false); }
+  };
+  const planning = project.agentRun?.roles.planning?.proposal as { goals?: { title: string; kind: string; reason: string }[]; clarification_questions?: string[] } | undefined;
+  const intake = project.agentRun?.roles.source_intake?.proposal as { review_questions?: string[] } | undefined;
+  const governanceReview = project.agentRun?.roles.governance_review?.proposal as { review_points?: string[] } | undefined;
+  const drafting = project.agentRun?.roles.requirement_drafting?.proposal as { requirements?: {
+    title: string; statement: string; kind: "Functional" | "Non-functional"; priority: "Must" | "Should" | "Could";
+    rationale: string; source_paths: string[];
+  }[]; open_questions?: string[] } | undefined;
+  const suggestionKey = (role: string, value: string) => `${project.agentRun?.signature ?? "unsaved"}:${role}:${value}`;
+  const dismissed = new Set(project.dismissedAgentSuggestions ?? []);
+  const suggestedQuestions = [...new Set([...(intake?.review_questions ?? []), ...(planning?.clarification_questions ?? []), ...(drafting?.open_questions ?? [])])]
+    .filter(question => !dismissed.has(suggestionKey("question", question)) && !project.clarifications.some(item => item.question === question) &&
+      !project.conversations.some(conversation => conversation.messages.some(message => message.proposal?.kind === "clarification-question" && message.proposal.after === question && message.proposal.status === "pending")));
+  const suggestedDrafts = (drafting?.requirements ?? []).filter(draft =>
+    !dismissed.has(suggestionKey("draft", `${draft.title}:${draft.statement}`)) &&
+    !project.requirements.some(item => item.title === draft.title && item.statement === draft.statement && item.goalId === goal?.id));
+  const suggestedGoals = (planning?.goals ?? []).filter(item => !dismissed.has(suggestionKey("goal", `${item.kind}:${item.title}`)));
+  const suggestedPolicies = (governanceReview?.review_points ?? []).filter(item => !dismissed.has(suggestionKey("governance", item)));
+  const pendingSuggestionCount = suggestedQuestions.length + suggestedDrafts.length + suggestedGoals.length + suggestedPolicies.length;
+  const dismissSuggestion = (role: string, value: string) => update(p => {
+    const key = suggestionKey(role, value);
+    p.dismissedAgentSuggestions = [...new Set([...(p.dismissedAgentSuggestions ?? []), key])];
+    addAudit(p, "Rejected BA Mate suggestion", role, value);
+  });
   const hasArtifacts =
     project.requirements.length +
       project.stories.length +
@@ -816,6 +891,67 @@ function ProjectOverview({
           </>
         }
       />
+      <div className="project-background-status" role="status">
+        <Sparkles size={18} />
+        <span><b>BA Mate background work</b><small>{project.sourceAnalysisStatus === "ready" ? `${project.sources.length} project source${project.sources.length === 1 ? "" : "s"} discovered; ${project.sources.filter(source => source.status === "Needs review").length} need BA review.` : project.sourceAnalysisStatus === "failed" ? "The project folder is unavailable. Reconnect it in project settings." : "Project folder discovery is starting or still running."} {project.agentRun?.status === "ready" ? failedRole ? "Some suggestions paused; retry is available." : "Suggestions are ready for review." : project.agentRun?.status === "running" ? "Task roles are preparing suggestions." : project.agentRun?.status === "failed" ? "Suggestions paused; manual work is available." : ""}</small></span>
+        {(project.agentRun?.status === "failed" || failedRole) && project.sourceAnalysisStatus === "ready" &&
+          <Button onClick={() => void retrySuggestions()} disabled={retryingSuggestions}>{retryingSuggestions ? "Retrying…" : "Retry suggestions"}</Button>}
+        <Button onClick={() => go(project.sourceAnalysisStatus === "failed" ? "team" : "sources")}>{project.sourceAnalysisStatus === "failed" ? "Reconnect folder" : "Review sources"}</Button>
+      </div>
+      {project.agentRun?.context_manifest && <details className="agent-context-review">
+        <summary>What BA Mate used for these suggestions</summary>
+        <p>{project.agentRun.context_manifest.processing_location} · {project.agentRun.context_manifest.model} · {project.agentRun.context_manifest.confirmed_decision_count} recorded human decisions used{project.agentRun.context_manifest.omitted_confirmed_decision_count ? `, ${project.agentRun.context_manifest.omitted_confirmed_decision_count} older decisions omitted` : ""}</p>
+        <p>Source review: {project.agentRun.context_manifest.source_intake.sources.length} tentative extracts used, {project.agentRun.context_manifest.source_intake.omitted_count} omitted. Requirement drafting: {project.agentRun.context_manifest.requirement_drafting.sources.length} BA selected revisions used, {project.agentRun.context_manifest.requirement_drafting.omitted_count} omitted.</p>
+        {!!project.agentRun.context_manifest.omitted_approved_source_selection_count && <p>{project.agentRun.context_manifest.omitted_approved_source_selection_count} additional BA selected sources were outside this run's input limit.</p>}
+        {!!project.agentRun.context_manifest.unmatched_selected_source_count && <p>{project.agentRun.context_manifest.unmatched_selected_source_count} selected source revisions no longer match the current folder and were excluded from drafting.</p>}
+        {[...project.agentRun.context_manifest.source_intake.sources, ...project.agentRun.context_manifest.requirement_drafting.sources]
+          .filter((source, index, all) => all.findIndex(item => item.path === source.path && item.sha256 === source.sha256) === index)
+          .map(source => <div className="agent-context-source" key={`${source.path}:${source.sha256}`}><span>{source.path}</span><small>{source.sent_characters < source.available_characters ? `First ${source.sent_characters} of ${source.available_characters} characters used` : "Full extracted text used"} · revision {source.sha256?.slice(0, 12) || "unavailable"}</small></div>)}
+        <p>{project.agentRun.context_manifest.note}</p>
+      </details>}
+      {project.workspaceId && <details className="agent-context-review" onToggle={event => setPastAgentRunsOpen(event.currentTarget.open)}>
+        <summary>Earlier BA Mate proposals</summary>
+        {pastAgentRunError && <p role="alert">{pastAgentRunError}</p>}
+        {!pastAgentRuns && !pastAgentRunError && <p>Loading earlier runs…</p>}
+        {pastAgentRuns?.length === 0 && <p>No earlier proposals for this project.</p>}
+        {pastAgentRuns?.slice().reverse().map((run, index) => <details className="agent-prior-run" key={`${run.signature}:${index}`}>
+          <summary>{run.context_manifest?.created_at ? new Date(run.context_manifest.created_at).toLocaleString() : "Earlier run"} · {Object.values(run.roles).filter(role => role.status === "ready").length} completed roles</summary>
+          <p>{run.context_manifest ? `${run.context_manifest.source_intake.sources.length} tentative source extracts · ${run.context_manifest.requirement_drafting.sources.length} selected source revisions` : "Context details were not captured for this earlier run."}</p>
+          {Object.entries(run.roles).filter(([, role]) => role.proposal).map(([name, role]) => <details className="agent-prior-proposal" key={name}><summary>{name.replaceAll("_", " ")}</summary><pre>{JSON.stringify(role.proposal, null, 2)}</pre></details>)}
+        </details>)}
+      </details>}
+      {project.agentRun?.status === "ready" && pendingSuggestionCount > 0 &&
+        <details className="overview-agent-review" aria-label="BA Mate suggestions for review">
+          <summary><span className="eyebrow">Background task roles</span><strong>Suggestions awaiting your direction</strong><small>{pendingSuggestionCount} proposals · Open to review and adopt</small></summary>
+          {suggestedDrafts.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Working requirement drafts <small>{suggestedDrafts.length}</small></summary><p>Adoption creates an editable draft and pending source links. Review support and criteria before approval.</p>{suggestedDrafts.map(draft => {
+            const staleSource = draft.source_paths.some(path => !goal || !project.sources.some(source => source.relativePath === path && goalSourceCurrent(goal, source)));
+            return <div className="setup-agent-question" key={`${draft.title}:${draft.statement}`}><span><strong>{draft.title}</strong><small>{draft.statement}</small></span><div className="agent-suggestion-actions"><Button disabled={!goal || staleSource} onClick={() => update(p => {
+              const currentGoal = activeGoal(p);
+              if (!currentGoal) return;
+              const sourceIds = draft.source_paths.map(path => p.sources.find(source => source.relativePath === path && goalSourceCurrent(currentGoal, source))?.id).filter((id): id is string => Boolean(id));
+              if (sourceIds.length !== draft.source_paths.length) return;
+              const id = uid(draft.kind === "Functional" ? "FR" : "NFR");
+              p.requirements.push({ id, kind: draft.kind, title: draft.title, statement: draft.statement,
+                priority: draft.priority, status: "draft", owner: "Business analyst", sourceIds, storyIds: [], checkIds: [],
+                version: 1, rationale: draft.rationale, businessValue: "", businessRules: [], fitCriteria: [],
+                dependencies: [], stakeholders: [], openQuestions: [], comments: [], syncStatus: "Not included", goalId: currentGoal.id });
+              sourceIds.forEach(sourceId => p.traceLinks.push({ id: uid("TR"), from: sourceId, to: id,
+                relation: "Proposed support", status: "Pending", goalId: currentGoal.id }));
+              addAudit(p, "Adopted AI requirement draft", id, `${draft.title}; ${sourceIds.length} source links await human verification.`);
+            })}>{staleSource ? "Review sources first" : "Adopt draft"}</Button><Button onClick={() => dismissSuggestion("draft", `${draft.title}:${draft.statement}`)}>Reject</Button></div></div>;
+          })}</details>}
+          {suggestedQuestions.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Questions for people to answer <small>{suggestedQuestions.length}</small></summary>{suggestedQuestions.map(question =>
+            <div className="setup-agent-question" key={question}><span>{question}</span><div className="agent-suggestion-actions"><Button onClick={() => update(p => {
+              const id = uid("CQ"); p.clarifications.push({ id, priority: "Important", question,
+                rationale: "Suggested by BA Mate from tentative project context; confirm with the responsible person.",
+                sourceId: "PROJECT-BRIEF", owner: "Business analyst", status: "Unanswered", suggestions: [], affects: [], goalId: goal?.id });
+              addAudit(p, "Adopted clarification question", id, question);
+            })}>Track question</Button><Button onClick={() => dismissSuggestion("question", question)}>Reject</Button></div></div>)}</details>}
+          {suggestedGoals.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Possible next work <small>{suggestedGoals.length}</small></summary>{suggestedGoals.map(suggestion =>
+            <div className="setup-agent-question" key={`${suggestion.kind}:${suggestion.title}`}><span><strong>{suggestion.title}</strong><small>{suggestion.reason}</small></span><div className="agent-suggestion-actions"><Button onClick={() => go("goals?new=1")}>Review in goal setup</Button><Button onClick={() => dismissSuggestion("goal", `${suggestion.kind}:${suggestion.title}`)}>Reject</Button></div></div>)}</details>}
+          {suggestedPolicies.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Governance to review <small>{suggestedPolicies.length}</small></summary>{suggestedPolicies.map(point =>
+            <div className="setup-agent-question" key={point}><span>{point}</span><div className="agent-suggestion-actions"><Button onClick={() => go("team")}>Review settings</Button><Button onClick={() => dismissSuggestion("governance", point)}>Reject</Button></div></div>)}</details>}
+        </details>}
       <div className="overview-grid">
         <Card className="next-action-card">
           <div className="gate-icon">
@@ -1351,8 +1487,9 @@ function WorkflowView({
               <div>
                 <Link2 />
                 <span>
-                  <b>{goal?.sourceIds.length ?? 0} linked sources</b>
-                  <small>Goal-specific context scope</small>
+                  <b>{goal?.sourceIds.filter(id => project.sources.some(source => source.id === id && goalSourceCurrent(goal, source))).length ?? 0} current sources</b>
+                  <small>{goal && goal.sourceIds.some(id => !project.sources.some(source => source.id === id && goalSourceCurrent(goal, source)))
+                    ? "Some selected sources need review" : "Goal-specific context scope"}</small>
                 </span>
               </div>
             </div>
@@ -1478,7 +1615,18 @@ function SourcesView({
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState(project.sources[0]?.id);
   const source = project.sources.find((s) => s.id === selected);
+  const goal = activeGoal(project);
+  const [sourceQuery, setSourceQuery] = useState("");
+  useEffect(() => { if (!project.sources.some(item => item.id === selected)) setSelected(project.sources[0]?.id); }, [project.sources, selected]);
+  const searchResults = useMemo(() => {
+    const needle = sourceQuery.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    return project.sources.flatMap(item => (item.passages?.length ? item.passages : [{ locator: "Document", text: item.content ?? "" }])
+      .filter(passage => `${item.name} ${item.relativePath ?? ""} ${passage.text}`.toLowerCase().includes(needle))
+      .slice(0, 30).map(passage => ({ source: item, passage }))).slice(0, 40);
+  }, [project.sources, sourceQuery]);
   const [extracting, setExtracting] = useState(false);
+  const [verifyingSource, setVerifyingSource] = useState<string>();
   const attach = async (files: FileList | null) => {
     if (!files?.length || extracting) return;
     const selectedFiles = Array.from(files).filter(file => isSupportedSourceName(file.name));
@@ -1492,16 +1640,16 @@ function SourcesView({
         imported.push({ file, result });
       }
       const reference = await ensureProjectWorkspace(project);
-      await writeProjectFiles(reference, imported.map(({ file, result }) => ({ name: file.name, relativePath: relativePathForFile(file), data: result.original_base64 })));
-      const created = imported.map(item => ({ ...item, sourceId: uid("SRC") }));
+      const written = await writeProjectFiles(reference, imported.map(({ file, result }) => ({ name: file.name, relativePath: file.webkitRelativePath || `Uploaded Sources/${file.name}`, data: result.original_base64 })));
+      const created = imported.map((item, index) => ({ ...item, sourceId: uid("SRC"), storedPath: written[index] ?? (item.file.webkitRelativePath || `Uploaded Sources/${item.file.name}`) }));
       update(p => {
         p.workspaceId = reference.workspaceId;
         p.workspaceKind = reference.workspaceKind;
         p.workspacePath = reference.displayPath;
         p.folderName = reference.folderName;
-        for (const { file, result, sourceId } of created) {
-          p.sources.push({ id: sourceId, name: file.name, relativePath: relativePathForFile(file), type: sourceTypeForName(file.name), status: "Needs review", classification: "Project only", provenance: "Imported on " + new Date().toISOString(), concepts: [], approved: false, immutable: true, content: result.content, originalBase64: result.original_base64, sha256: result.sha256, version: 1, passages: result.passages, extractionLimitations: result.limitations });
-          addAudit(p, "Extracted source for review", sourceId, `${file.name}; original copied to ${reference.folderName}/sources and retained for review.`);
+        for (const { file, result, sourceId, storedPath } of created) {
+          p.sources.push({ id: sourceId, name: storedPath.split("/").at(-1) ?? file.name, relativePath: storedPath, type: sourceTypeForName(file.name), status: "Needs review", classification: "Project only", provenance: "Imported on " + new Date().toISOString(), concepts: [], approved: false, immutable: true, content: result.content, sha256: result.sha256, version: 1, passages: result.passages, extractionLimitations: result.limitations });
+          addAudit(p, "Extracted source for review", sourceId, `${file.name}; original copied into the project folder and retained for review.`);
         }
       });
       if (created.length) setSelected(created.at(-1)!.sourceId);
@@ -1514,23 +1662,26 @@ function SourcesView({
     try {
       const candidate = await chooseProjectFolder();
       if (!candidate) return;
-      const reference = await ensureProjectWorkspace(project, candidate);
-      const originals = project.sources.map(sourceStoredFile).filter((item): item is NonNullable<typeof item> => Boolean(item));
-      await writeProjectFiles(reference, originals);
+      const copy = await copyProjectToWorkspace(project, candidate);
       update((p) => {
-        p.folderName = reference.folderName;
-        p.workspaceId = reference.workspaceId;
-        p.workspaceKind = reference.workspaceKind;
-        p.workspacePath = reference.displayPath;
+        p.folderName = copy.folderName;
+        p.workspaceId = copy.workspaceId;
+        p.workspaceKind = copy.workspaceKind;
+        p.workspacePath = copy.workspacePath;
+        p.workspaceFolders = copy.workspaceFolders;
+        for (const source of p.sources) {
+          const moved = copy.sources.find(item => item.id === source.id);
+          if (moved) { source.relativePath = moved.relativePath; source.originalBase64 = moved.originalBase64; source.approved = moved.approved; source.status = moved.status; }
+        }
         addAudit(
           p,
           "Connected local folder",
-          reference.folderName,
-          `${originals.length} existing original source${originals.length === 1 ? " was" : "s were"} copied into the folder.`,
+          copy.folderName,
+          `${copy.sources.length} original source${copy.sources.length === 1 ? " was" : "s were"} copied into the folder.`,
         );
       });
       appNotice(
-        `${reference.folderName} is connected and contains the project's uploaded originals.`,
+        `${copy.folderName} is connected and contains the project's original sources.`,
         "success",
         "Folder connected",
       );
@@ -1580,6 +1731,10 @@ function SourcesView({
           </>
         }
       />
+      <div className="source-search-panel">
+        <label><Search size={17} /><input aria-label="Search project source text" value={sourceQuery} onChange={event => setSourceQuery(event.target.value)} placeholder="Search files and extracted text across this project…" /></label>
+        {sourceQuery.trim().length >= 2 && <div className="source-search-results" role="status">{searchResults.length ? searchResults.map(({ source: item, passage }, index) => <button key={`${item.id}:${passage.locator}:${index}`} onClick={() => setSelected(item.id)}><b>{item.relativePath ?? item.name} · {passage.locator}</b><span>{passage.text.slice(0, 200)}</span><small>{item.approved ? "Reviewed source" : "Unreviewed extraction — verify before using as evidence"}</small></button>) : <p>No matching extracted text. Files without readable text may need a transcript or OCR copy.</p>}</div>}
+      </div>
       {extracting && <p role="status">Reading source contents…</p>}
       <div className="source-layout">
         <Card
@@ -1599,11 +1754,11 @@ function SourcesView({
                 <span>
                   <b>{s.name}</b>
                   <small>
-                    {s.id} · {s.type} · {s.provenance}
+                    {s.id} · {s.type} · {s.relativePath ?? s.provenance}
                   </small>
                 </span>
                 <StatusBadge value={s.status} />
-                <em>{s.approved ? "Included" : "Excluded"}</em>
+                <em>{s.approved ? "Included" : s.status === "Excluded" ? "Excluded" : "Awaiting review"}</em>
               </button>
             ))}
           </div>
@@ -1615,42 +1770,66 @@ function SourcesView({
                 <FileCheck2 />
                 <span>
                   <h2>{source.name}</h2>
-                  <p>{source.id} · {source.originalBase64 ? "Original preserved" : "Demonstration metadata — attach the actual source"}</p>
+                  <p>{source.id} · {source.originalBase64 || source.relativePath && project.workspaceId ? "Original in project folder" : "Original unavailable"}</p>
                 </span>
               </div>
-              <label className="switch-row source-approval">
-                <span>
-                  <b>Include as evidence for this goal</b>
-                  <small>Only after comparing the extracted text with the original</small>
-                </span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={source.approved && !!source.content}
-                  disabled={!source.content}
-                  onChange={(e) =>
-                    update((p) => {
-                      const item = p.sources.find((x) => x.id === source.id)!;
-                      item.approved = e.target.checked;
-                      item.status = e.target.checked ? "Analyzed" : "Excluded";
-                      const goal = activeGoal(p);
-                      if (goal) {
-                        goal.sourceIds = e.target.checked
-                          ? [...new Set([...goal.sourceIds, item.id])]
-                          : goal.sourceIds.filter((id) => id !== item.id);
+              <div className="source-review-controls">
+                <label className="switch-row source-approval">
+                  <span><b>Accept extracted source for this project</b><small>Compare the extracted text with the original first. This does not confirm every claim in the file.</small></span>
+                  <input type="checkbox" role="switch" checked={source.approved && source.status === "Analyzed"}
+                    disabled={!source.content || !source.sha256 || verifyingSource === source.id}
+                    onChange={event => { const include = event.target.checked; void (async () => {
+                      if (include) {
+                        setVerifyingSource(source.id);
+                        try { await verifySourceOriginal(project, source); }
+                        catch (error) { appNotice(error instanceof Error ? error.message : "The original could not be checked.", "warning", "Source review paused"); return; }
+                        finally { setVerifyingSource(undefined); }
                       }
-                      addAudit(
-                        p,
-                        e.target.checked
-                          ? "Approved source context"
-                          : "Excluded source context",
-                        source.id,
-                        source.name,
-                      );
-                    })
-                  }
-                />
-              </label>
+                      update(p => {
+                        const item = p.sources.find(candidate => candidate.id === source.id);
+                        if (!item || include && item.sha256 !== source.sha256) return;
+                        item.approved = include;
+                        item.status = include ? "Analyzed" : "Excluded";
+                        if (!include) for (const linkedGoal of p.goals) {
+                          linkedGoal.sourceIds = linkedGoal.sourceIds.filter(id => id !== item.id);
+                          if (linkedGoal.sourceRevisionPins) delete linkedGoal.sourceRevisionPins[item.id];
+                          const conversation = p.conversations.find(entry => entry.id === linkedGoal.conversationId);
+                          if (conversation) conversation.context = conversation.context.filter(entry => entry.id !== item.id);
+                        }
+                        addAudit(p, include ? "Accepted source extraction" : "Excluded source context", item.id, item.relativePath ?? item.name);
+                      });
+                    })(); }} />
+                </label>
+                {goal && <label className="switch-row source-approval">
+                  <span><b>Use for “{goal.title}”</b><small>{goal.sourceIds.includes(source.id) && !goalSourceCurrent(goal, source)
+                    ? goalSelectableSource(source) ? "A new source revision is ready. Select it again for this goal." : "Previously selected; review the current file before BA Mate can use it again."
+                    : "Choose this reviewed revision as evidence for the active goal."}</small></span>
+                  <input type="checkbox" role="switch" checked={goalSourceCurrent(goal, source)}
+                    disabled={!goalSelectableSource(source) || verifyingSource === source.id}
+                    onChange={event => { const include = event.target.checked; void (async () => {
+                      if (include) {
+                        setVerifyingSource(source.id);
+                        try { await verifySourceOriginal(project, source); }
+                        catch (error) { appNotice(error instanceof Error ? error.message : "The original could not be checked.", "warning", "Goal source review paused"); return; }
+                        finally { setVerifyingSource(undefined); }
+                      }
+                      update(p => {
+                        const item = p.sources.find(candidate => candidate.id === source.id);
+                        const currentGoal = activeGoal(p);
+                        if (!item || !currentGoal || include && (!goalSelectableSource(item) || item.sha256 !== source.sha256)) return;
+                        currentGoal.sourceIds = include ? [...new Set([...currentGoal.sourceIds, item.id])] : currentGoal.sourceIds.filter(id => id !== item.id);
+                        currentGoal.sourceRevisionPins ??= {};
+                        if (include) currentGoal.sourceRevisionPins[item.id] = item.sha256!;
+                        else delete currentGoal.sourceRevisionPins[item.id];
+                        const conversation = p.conversations.find(entry => entry.id === currentGoal.conversationId);
+                        if (conversation) conversation.context = include
+                          ? [...conversation.context.filter(entry => entry.id !== item.id), { id: item.id, type: "Source", label: item.name, origin: "attached", removable: true, route: "sources" }]
+                          : conversation.context.filter(entry => entry.id !== item.id);
+                        addAudit(p, include ? "Selected source for goal" : "Removed source from goal", currentGoal.id, item.relativePath ?? item.name);
+                      });
+                    })(); }} />
+                </label>}
+              </div>
             </header>
             <dl className="detail-grid">
               <div>
@@ -1672,7 +1851,16 @@ function SourcesView({
             </dl>
             <h3>Extracted source text</h3>
             <pre className="source-transcript">{source.content || source.extractionLimitations?.[0] || "The original is stored, but no searchable text is available."}</pre>
-            {source.originalBase64 && <Button onClick={() => { const bytes = Uint8Array.from(atob(source.originalBase64!), c => c.charCodeAt(0)); downloadBlob(new Blob([bytes]), source.name); }}>Download original source</Button>}
+            {(source.originalBase64 || source.relativePath && project.workspaceId && project.workspaceKind) && <Button onClick={() => { void (async () => {
+              try {
+                const original = source.relativePath && project.workspaceId && project.workspaceKind
+                  ? await readProjectOriginal({ workspaceId: project.workspaceId, workspaceKind: project.workspaceKind,
+                    folderName: project.folderName, displayPath: project.workspacePath }, source.relativePath)
+                  : { name: source.name, data: source.originalBase64! };
+                const bytes = Uint8Array.from(atob(original.data), c => c.charCodeAt(0));
+                downloadBlob(new Blob([bytes]), original.name);
+              } catch (error) { appNotice(error instanceof Error ? error.message : "The original could not be opened.", "danger"); }
+            })(); }}>Download original source</Button>}
             {source.sha256 && <small className="source-hash">SHA-256: {source.sha256}</small>}
             <h3>Source notes</h3>
             <div className="tag-list">
@@ -3068,23 +3256,47 @@ function TeamView({
   update: (fn: (p: Project) => void) => void;
 }) {
   const [connectingFolder, setConnectingFolder] = useState(false);
+  const navigate = useNavigate();
   const [pendingRemove, setPendingRemove] = useState<string>();
+  const [projectName, setProjectName] = useState(project.name);
+  const [projectDomain, setProjectDomain] = useState(project.domain);
+  const [projectDescription, setProjectDescription] = useState(project.description);
+  const [policyDraft, setPolicyDraft] = useState(project.governancePacks);
+  const [policyInstruction, setPolicyInstruction] = useState("");
+  const [policyProposal, setPolicyProposal] = useState<string[] | null>(null);
+  const [policyBusy, setPolicyBusy] = useState(false);
+  const [policyError, setPolicyError] = useState("");
+  const [policyRemoteAllowed, setPolicyRemoteAllowed] = useState(false);
+  const askPolicyAssistant = async () => {
+    if (!policyInstruction.trim() || policyBusy) return;
+    setPolicyBusy(true); setPolicyError("");
+    try {
+      const result = await api<{ proposal: { policies: string[] } }>("/api/setup/propose", { method: "POST",
+        body: JSON.stringify({ kind: "governance", description: policyInstruction, project_description: projectDescription,
+          current_policies: policyDraft, cloud_allowed: policyRemoteAllowed }) });
+      setPolicyProposal(result.proposal.policies);
+    } catch (error) { setPolicyError(error instanceof Error ? error.message : "BA Mate could not prepare a policy proposal."); }
+    finally { setPolicyBusy(false); }
+  };
   const reconnectFolder = async () => {
     setConnectingFolder(true);
     try {
       const candidate = await chooseProjectFolder();
       if (!candidate) return;
-      const reference = await ensureProjectWorkspace(project, candidate);
-      const originals = project.sources.map(sourceStoredFile).filter((item): item is NonNullable<typeof item> => Boolean(item));
-      await writeProjectFiles(reference, originals);
+      const copy = await copyProjectToWorkspace(project, candidate);
       update(p => {
-        p.folderName = reference.folderName;
-        p.workspaceId = reference.workspaceId;
-        p.workspaceKind = reference.workspaceKind;
-        p.workspacePath = reference.displayPath;
-        addAudit(p, "Reconnected project folder", reference.folderName, `${originals.length} original source${originals.length === 1 ? " was" : "s were"} copied into the sources folder.`);
+        p.folderName = copy.folderName;
+        p.workspaceId = copy.workspaceId;
+        p.workspaceKind = copy.workspaceKind;
+        p.workspacePath = copy.workspacePath;
+        p.workspaceFolders = copy.workspaceFolders;
+        for (const source of p.sources) {
+          const moved = copy.sources.find(item => item.id === source.id);
+          if (moved) { source.relativePath = moved.relativePath; source.originalBase64 = moved.originalBase64; source.approved = moved.approved; source.status = moved.status; }
+        }
+        addAudit(p, "Reconnected project folder", copy.folderName, `${copy.sources.length} original source${copy.sources.length === 1 ? " was" : "s were"} copied into the project folder.`);
       });
-      appNotice(`${reference.folderName} now contains the project's uploaded originals.`, "success", "Project folder connected");
+      appNotice(`${copy.folderName} now contains the project's original sources.`, "success", "Project folder connected");
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) appNotice(error instanceof Error ? error.message : "The folder could not be connected.", "danger", "Folder connection failed");
     } finally {
@@ -3099,6 +3311,27 @@ function TeamView({
         description="Manage the local approval roles used for this beta workspace. No invitations are sent."
       />
       <div className="team-layout">
+        <Card title="Project setup" description="Update the project's working context. BA Mate uses the current description when proposing work.">
+          <div className="project-settings-fields">
+            <label className="editor-field"><span>Project name</span><input value={projectName} onChange={event => setProjectName(event.target.value)} /></label>
+            <label className="editor-field"><span>Category or domain</span><input value={projectDomain} onChange={event => setProjectDomain(event.target.value)} /></label>
+            <label className="editor-field"><span>Project description</span><textarea value={projectDescription} onChange={event => setProjectDescription(event.target.value)} /></label>
+            <Button kind="primary" disabled={!projectName.trim() || !projectDomain.trim()} onClick={() => { update(p => { p.name = projectName.trim(); p.domain = projectDomain.trim(); p.description = projectDescription.trim(); addAudit(p, "Updated project setup", "Project brief", `${p.domain}: ${p.description}`); }); appNotice("Project context updated. Review any affected suggestions or artifacts.", "success"); }}><Save size={16} /> Save project setup</Button>
+          </div>
+          <Button onClick={() => navigate(`/projects/${project.id}/governance`)}><ShieldCheck size={16} /> Review policies and safeguards</Button>
+        </Card>
+        <Card title="Governance & policy setup" description="Edit the full project policy list or ask BA Mate for a reviewable replacement proposal.">
+          <div className="project-settings-fields">
+            {policyDraft.map((policy, index) => <div className="project-policy-row" key={index}><input aria-label={`Policy ${index + 1}`} value={policy} readOnly={['Core responsible BA', 'Human oversight & traceability'].includes(policy)} onChange={event => setPolicyDraft(current => current.map((item, i) => i === index ? event.target.value : item))} />{!['Core responsible BA', 'Human oversight & traceability'].includes(policy) && <IconButton label={`Remove ${policy}`} onClick={() => setPolicyDraft(current => current.filter((_, i) => i !== index))}><Trash2 size={15} /></IconButton>}</div>)}
+            <Button onClick={() => setPolicyDraft(current => [...current, "New project policy"])}><Plus size={16} /> Add policy</Button>
+            <label className="editor-field"><span>Describe a policy change to BA Mate</span><textarea value={policyInstruction} onChange={event => setPolicyInstruction(event.target.value)} placeholder="Explain what should be added, changed or removed…" /></label>
+            <label className="setup-remote-choice"><input type="checkbox" checked={policyRemoteAllowed} onChange={event => setPolicyRemoteAllowed(event.target.checked)} /> Allow the configured remote model to process this description if selected</label>
+            {policyError && <p className="setup-ai-error" role="alert">{policyError}</p>}
+            <Button disabled={!policyInstruction.trim() || policyBusy} onClick={() => void askPolicyAssistant()}><Sparkles size={16} /> {policyBusy ? "Preparing proposal…" : "Ask BA Mate"}</Button>
+            {policyProposal && <div className="setup-policy-proposal"><b>Proposed full policy list</b><ul>{policyProposal.map(policy => <li key={policy}>{policy}</li>)}</ul><Button onClick={() => { setPolicyDraft(policyProposal); setPolicyProposal(null); }}>Use this list for review</Button><Button onClick={() => setPolicyProposal(null)}>Discard</Button></div>}
+            <Button kind="primary" onClick={() => { update(p => { p.governancePacks = [...new Set(['Core responsible BA', 'Human oversight & traceability', ...policyDraft.map(item => item.trim()).filter(Boolean)])]; addAudit(p, "Updated project policies", "Project governance", p.governancePacks.join(" · ")); }); appNotice("The reviewed project policy list was saved.", "success"); }}><Save size={16} /> Save policy list</Button>
+          </div>
+        </Card>
         <Card
           title="Project members"
           description="Only explicitly authorized BA roles can approve baselines."
@@ -3267,6 +3500,11 @@ function ProjectsHome({
                 <span>
                   <b>{blockers(project)}</b> blockers
                 </span>
+                <IconButton
+                  label={`Project setup for ${project.name}`}
+                  className="project-setup-button"
+                  onClick={(event) => { event.stopPropagation(); nav(`/projects/${project.id}/team`); }}
+                ><Settings size={17} /></IconButton>
                 <IconButton
                   label={`Delete ${project.name}`}
                   className="delete-project-button"
@@ -3530,6 +3768,7 @@ function ResearchConsole({
   const [account, setAccount] = useState<{ role: string; study_pseudonym?: string; offline_until?: string; consent?: { consent_version: string } | null }>();
   const [accountError, setAccountError] = useState("");
   const [participants, setParticipants] = useState<{ account_code: string; status: string; study_pseudonym?: string; consent_state?: string }[]>([]);
+  const [pendingRevoke, setPendingRevoke] = useState<{ account_code: string; study_pseudonym?: string }>();
   const [batches, setBatches] = useState<{ study_pseudonym: string; consent_version: string; received_at: string; event_count: number }[]>([]);
   const [feedbackEntries, setFeedbackEntries] = useState<{ feedback_id: string; study_pseudonym: string; feedback_text: string; review_state: string; submitted_at: string }[]>([]);
   const [remoteRuns, setRemoteRuns] = useState<{ study_pseudonym: string; run_code: string; run_condition: string; latest_event_at: string }[]>([]);
@@ -3899,7 +4138,7 @@ function ResearchConsole({
             <div className="workbench-controls"><label>Invite participant email<input type="email" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} placeholder="participant@example.org" /></label><Button kind="primary" disabled={!inviteEmail} onClick={() => void inviteParticipant()}>Create 72-hour invitation</Button><Button onClick={() => void loadAdministration()}>Refresh status</Button></div>
             {inviteResult && <p className="context-note warning">{inviteResult}</p>}
             <p>{participants.length} participant account(s) · {batches.length} accepted batch(es)</p>
-            <div className="stage-analytics">{participants.map(participant => <div key={participant.account_code}><span><b>{participant.study_pseudonym ?? "Pseudonym pending"}</b><small>{participant.account_code.slice(0, 8)}</small></span><span><b>{participant.status}</b><small>account</small></span><span><b>{participant.consent_state ?? "No consent"}</b><small>collection consent</small></span>{participant.status === "active" && <Button kind="danger" onClick={() => { if (window.confirm(`Revoke ${participant.study_pseudonym ?? "this participant"}? Their local BA work will not be changed.`)) void revokeParticipant(participant.account_code); }}>Revoke</Button>}</div>)}</div>
+            <div className="stage-analytics">{participants.map(participant => <div key={participant.account_code}><span><b>{participant.study_pseudonym ?? "Pseudonym pending"}</b><small>{participant.account_code.slice(0, 8)}</small></span><span><b>{participant.status}</b><small>account</small></span><span><b>{participant.consent_state ?? "No consent"}</b><small>collection consent</small></span>{participant.status === "active" && <Button kind="danger" onClick={() => setPendingRevoke(participant)}>Revoke</Button>}</div>)}</div>
             <details><summary>Accepted batch status</summary><ul>{batches.map((batch, index) => <li key={index}>{batch.study_pseudonym} · {batch.event_count} event(s) · {batch.consent_version} · {new Date(batch.received_at).toLocaleString()}</li>)}</ul></details>
             <details><summary>Separately submitted feedback ({feedbackEntries.length})</summary><p>Read this optional free text separately. It is deliberately excluded from ordinary research exports.</p>{feedbackEntries.map(entry => <div className="context-note" key={entry.feedback_id}><div><b>{entry.study_pseudonym} · {entry.review_state}</b><p>{entry.feedback_text}</p>{entry.review_state === "unreviewed" || entry.review_state === "withdrawal_requested" ? <div className="workbench-actions"><Button onClick={() => void reviewFeedback(entry.feedback_id, "reviewed")}>Mark reviewed</Button><Button kind="danger" onClick={() => void reviewFeedback(entry.feedback_id, "withheld")}>Withhold</Button></div> : null}</div></div>)}</details>
             <details><summary>Independent quality assessment ({qualityAssessments.length})</summary><p>Record the researcher rubric score and optional correction effort separately from participant self-ratings. No project content or free-text assessment note is collected.</p><div className="workbench-controls"><label>Accepted pseudonymous run<select value={qualityRunKey} onChange={event => setQualityRunKey(event.target.value)}><option value="">Select run</option>{remoteRuns.map(run => <option key={`${run.study_pseudonym}/${run.run_code}`} value={`${run.study_pseudonym}/${run.run_code}`}>{run.study_pseudonym} · {run.run_code} · {run.run_condition}</option>)}</select></label><label>Independent quality (1–5)<select value={qualityScore} onChange={event => setQualityScore(event.target.value)}>{[1,2,3,4,5].map(score => <option key={score} value={score}>{score}</option>)}</select></label><label>Correction effort, minutes (optional)<input type="number" min="0" max="1440" value={correctionEffort} onChange={event => setCorrectionEffort(event.target.value)} /></label><Button kind="primary" disabled={!qualityRunKey} onClick={() => void recordQualityAssessment()}>Record assessment</Button></div><p>Instrument: {RESEARCH_INSTRUMENT_VERSION}</p><ul>{qualityAssessments.map(item => <li key={item.assessment_id}>{item.study_pseudonym} · {item.run_code} · quality {item.quality_score}/5 · correction effort {item.correction_effort_minutes ?? "not recorded"} minutes</li>)}</ul></details>
@@ -4062,6 +4301,7 @@ function ResearchConsole({
           </div>
         </Card>
       )}
+      {pendingRevoke && <ConfirmDialog title={`Revoke ${pendingRevoke.study_pseudonym ?? "this participant"}?`} description="This revokes research account access. Their local BA work will not be changed." confirmLabel="Revoke access" onCancel={() => setPendingRevoke(undefined)} onConfirm={() => { void revokeParticipant(pendingRevoke.account_code); setPendingRevoke(undefined); }} />}
     </>
   );
 }
@@ -4186,7 +4426,7 @@ function WorkspaceTemplates({
   setState: Dispatch<SetStateAction<WorkspaceState>>;
 }) {
   const navigate = useNavigate();
-  const useTemplate = (template: (typeof workspaceTemplates)[number]) => {
+  const useTemplate = async (template: (typeof workspaceTemplates)[number]) => {
     const project = JSON.parse(
       JSON.stringify(freshState().projects[0]),
     ) as Project;
@@ -4196,7 +4436,7 @@ function WorkspaceTemplates({
     project.description = template.description;
     project.folderName = "BA-Mate/" + project.id + "-workspace";
     project.template = template.name;
-    project.governancePacks = [...template.governance];
+    project.governancePacks = [...new Set(["Core responsible BA", "Human oversight & traceability", ...template.governance])];
     prepareFreshProject(project);
     project.sources = [];
     project.audit = [
@@ -4209,16 +4449,19 @@ function WorkspaceTemplates({
         detail: template.name + " structure and governance defaults applied.",
       },
     ];
-    setState((current) => ({
-      ...current,
-      projects: [project, ...current.projects],
-    }));
-    appNotice(
-      `${template.name} was created without copying any project evidence.`,
-      "success",
-      "Template workspace created",
-    );
-    navigate("/projects/" + project.id + "/overview");
+    try {
+      const reference = await createProjectWorkspace(project.id, project.name);
+      project.workspaceId = reference.workspaceId;
+      project.workspaceKind = reference.workspaceKind;
+      project.workspacePath = reference.displayPath;
+      project.folderName = reference.folderName;
+      addAudit(project, "Materialized project folder", reference.folderName, "Empty local folder created for background project discovery.");
+      setState((current) => ({ ...current, projects: [project, ...current.projects] }));
+      appNotice(`${template.name} was created with an empty local folder and no copied evidence.`, "success", "Template workspace created");
+      navigate("/projects/" + project.id + "/overview");
+    } catch (error) {
+      appNotice(error instanceof Error ? error.message : "The project folder could not be created.", "danger", "Template setup failed");
+    }
   };
   return (
     <>
@@ -4239,7 +4482,7 @@ function WorkspaceTemplates({
                 <Badge key={pack}>{pack}</Badge>
               ))}
             </div>
-            <Button kind="primary" onClick={() => useTemplate(template)}>
+            <Button kind="primary" onClick={() => void useTemplate(template)}>
               <Plus /> Use template
             </Button>
           </article>
@@ -4283,23 +4526,33 @@ function WorkspaceSettings({
       ? "comfortable"
       : "compact";
   }, [reducedMotion, comfortable]);
-  const exportWorkspace = () => {
-    downloadBlob(
-      new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }),
-      "ba-mate-local-workspace-backup.json",
-    );
-    appNotice(
-      "The complete local workspace backup download has started.",
-      "success",
-      "Backup exported",
-    );
+  const exportWorkspace = async () => {
+    try {
+      const projects = await Promise.all(state.projects.map(prepareProjectBackup));
+      downloadBlob(
+        new Blob([JSON.stringify({ ...state, projects }, null, 2)], { type: "application/json" }),
+        "ba-mate-local-workspace-backup.json",
+      );
+      const unavailable = projects.flatMap(project => project.sources.filter(source => !source.originalBase64));
+      appNotice(unavailable.length
+        ? `The workspace backup is downloading. ${unavailable.length} source${unavailable.length === 1 ? " has" : "s have"} no available original; their records are included and will need review after restore.`
+        : "The complete local workspace backup download has started.",
+      unavailable.length ? "warning" : "success", "Backup exported");
+    } catch (error) {
+      appNotice(error instanceof Error ? error.message : "The workspace backup could not be created.", "danger", "Backup failed");
+    }
   };
   const exportProjectBackup = async () => {
     const project = state.projects.find((item) => item.id === backupProjectId);
     if (!project) return;
     try {
-      downloadBlob(await repository.exportProject(project), `${project.id}-ba-mate-backup.zip`);
-      appNotice(`A complete backup of ${project.name} is downloading. It includes its sources, artifacts, audit history and baselines.`, "success", "Project backup exported");
+      const backup = await prepareProjectBackup(project);
+      downloadBlob(await repository.exportProject(backup), `${project.id}-ba-mate-backup.zip`);
+      const unavailable = backup.sources.filter(source => !source.originalBase64).length;
+      appNotice(unavailable
+        ? `${project.name} backup is downloading. ${unavailable} source${unavailable === 1 ? " has" : "s have"} no available original and will need review after restore.`
+        : `A complete backup of ${project.name} is downloading. It includes its sources, artifacts, audit history and baselines.`,
+      unavailable ? "warning" : "success", "Project backup exported");
     } catch (error) {
       appNotice(error instanceof Error ? error.message : "The project backup could not be created.", "danger", "Backup failed");
     }
@@ -4307,9 +4560,11 @@ function WorkspaceSettings({
   const restoreProjectBackup = async (file?: File) => {
     if (!file) return;
     try {
-      const restored = await repository.importProject(file);
+      const restored = await restoreProjectWorkspace(await repository.importProject(file));
       setState((current) => ({ ...current, projects: [restored, ...current.projects] }));
-      appNotice(`${restored.name} was restored as a separate local project. Existing work was not replaced.`, "success", "Project restored");
+      const unavailable = restored.sources.filter(source => !source.originalBase64).length;
+      appNotice(`${restored.name} was restored as a separate local project. Existing work was not replaced.${unavailable ? ` ${unavailable} source${unavailable === 1 ? " has" : "s have"} no original and require review.` : ""}`,
+        unavailable ? "warning" : "success", "Project restored");
     } catch (error) {
       appNotice(error instanceof Error ? error.message : "The selected backup is not valid.", "danger", "Restore failed");
     } finally {
@@ -4385,7 +4640,7 @@ function WorkspaceSettings({
             <label>
               <span>
                 <b>Project backup</b>
-                <small>Creates a portable ZIP containing the selected project’s originals, artifacts, audit history and baselines.</small>
+                <small>Creates a portable ZIP containing available originals, artifacts, audit history and baselines. Sources without available originals are identified on export.</small>
               </span>
               <select value={backupProjectId} onChange={(event) => setBackupProjectId(event.target.value)}>
                 {state.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
@@ -4532,13 +4787,10 @@ function prepareFreshProject(project: Project) {
   project.conversations = [];
   project.goals = [];
   project.versions = [];
-  project.audit = project.audit.filter(
-    (event) =>
-      event.action === "Created project" ||
-      event.action === "Applied BA Mate project context" ||
-      event.action === "Analyzed knowledge base" ||
-      event.action === "Configured governance pack",
-  );
+  project.audit = project.audit.filter((event) => [
+    "Created project", "Applied BA Mate project context", "Queued knowledge base analysis",
+    "Configured governance pack", "Materialized project folder", "Created project from template",
+  ].includes(event.action));
   return project;
 }
 
@@ -4558,8 +4810,13 @@ function ProjectKickoff({
     | "Improve existing documentation"
     | "Requirements addendum"
     | "New deliverable"
+    | "Stakeholder clarification"
+    | "Policy & governance review"
   >("New discovery");
   const [description, setDescription] = useState("");
+  const [goalTitle, setGoalTitle] = useState("");
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [starting, setStarting] = useState(false);
   const [describeOpen, setDescribeOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [reply, setReply] = useState("");
@@ -4592,65 +4849,88 @@ function ProjectKickoff({
       "Create a separate deliverable",
       "Run a distinct deliverable stream inside this project.",
     ],
+    ["Stakeholder clarification", "Resolve stakeholder questions", "Collect answers and record the people or decisions that confirm them."],
+    ["Policy & governance review", "Review policies and safeguards", "Assess project rules, uncertainty and approval needs before further work."],
   ];
-  const start = () => {
-    update((p) => {
-      p.goals.forEach((existing) => {
-        if (existing.status === "Active") existing.status = "Planned";
+  const planning = project.agentRun?.roles.planning?.proposal as { goals?: { title: string; kind: typeof kind; reason: string }[]; clarification_questions?: string[] } | undefined;
+  const intake = project.agentRun?.roles.source_intake?.proposal as { review_questions?: string[] } | undefined;
+  const suggestedQuestions = [...new Set([...(intake?.review_questions ?? []), ...(planning?.clarification_questions ?? [])])];
+  const start = async () => {
+    if (starting) return;
+    setStarting(true);
+    try {
+      const selected = project.sources.filter(source => selectedSourceIds.includes(source.id));
+      if (selected.length !== selectedSourceIds.length || selected.some(source => !goalSelectableSource(source)))
+        throw new Error("A selected source changed. Review the current source revision before starting this goal.");
+      for (const source of selected) await verifySourceOriginal(project, source);
+      update((p) => {
+        p.goals.forEach((existing) => {
+          if (existing.status === "Active") existing.status = "Planned";
+        });
+        const goalId = uid("GOAL");
+        const conversationId = uid("CONV");
+        const sourceIds = p.sources
+          .filter((source) => goalSelectableSource(source) && selectedSourceIds.includes(source.id))
+          .map((source) => source.id);
+        const baseTitle = goalTitle.trim() || (kind === "New discovery" ? "Initial project discovery" : kind);
+        let title = baseTitle;
+        for (let number = 2; p.goals.some(existing => existing.title.toLowerCase() === title.toLowerCase()); number++)
+          title = `${baseTitle} (${number})`;
+        const goal: ProjectGoal = {
+          id: goalId,
+          title,
+          kind,
+          status: "Active",
+          description:
+            description.trim() || options.find((x) => x[0] === kind)![2],
+          createdAt: "Just now",
+          gate: "Setup",
+          gateIndex: 0,
+          conversationId,
+          sourceIds,
+          sourceRevisionPins: Object.fromEntries(p.sources.filter(source => sourceIds.includes(source.id) && source.sha256)
+            .map(source => [source.id, source.sha256!])),
+          deliverables: [],
+        };
+        p.goals.push(goal);
+        p.activeGoalId = goal.id;
+        p.gate = "Setup";
+        p.gateIndex = 0;
+        p.conversations.unshift({
+          id: conversationId,
+          title: goal.title,
+          context: p.sources
+            .filter((source) => sourceIds.includes(source.id))
+            .map((source) => ({
+              id: source.id,
+              type: "Source" as const,
+              label: source.name,
+              origin: "attached" as const,
+              removable: true,
+              route: "sources",
+            })),
+          updated: "Just now",
+          messages: [
+            {
+              id: uid("MSG"),
+              role: "assistant",
+              text: `Goal setup complete. Your active goal is “${goal.title}”. BA Mate may continue preparing suggestions in the background. Its Setup → Discover → Clarify → Define → Validate → Approve workflow is isolated from other goals.`,
+            },
+          ],
+        });
+        addAudit(
+          p,
+          "Started project goal",
+          goal.id,
+          `${goal.kind}: ${goal.description}; ${sourceIds.length} BA-selected sources for this goal.`,
+        );
       });
-      const goalId = uid("GOAL");
-      const conversationId = uid("CONV");
-      const sourceIds = p.sources
-        .filter((source) => source.approved)
-        .map((source) => source.id);
-      const goal: ProjectGoal = {
-        id: goalId,
-        title: kind === "New discovery" ? "Initial project discovery" : kind,
-        kind,
-        status: "Active",
-        description:
-          description.trim() || options.find((x) => x[0] === kind)![2],
-        createdAt: "Just now",
-        gate: "Setup",
-        gateIndex: 0,
-        conversationId,
-        sourceIds,
-        deliverables: [],
-      };
-      p.goals.push(goal);
-      p.activeGoalId = goal.id;
-      p.gate = "Setup";
-      p.gateIndex = 0;
-      p.conversations.unshift({
-        id: conversationId,
-        title: goal.title,
-        context: p.sources
-          .filter((source) => sourceIds.includes(source.id))
-          .map((source) => ({
-            id: source.id,
-            type: "Source" as const,
-            label: source.name,
-            origin: "automatic" as const,
-            removable: true,
-            route: "sources",
-          })),
-        updated: "Just now",
-        messages: [
-          {
-            id: uid("MSG"),
-            role: "assistant",
-            text: `Goal setup complete. No AI analysis has run yet. Your active goal is “${goal.title}”. Its Setup → Discover → Clarify → Define → Validate → Approve workflow is now isolated from other project goals.`,
-          },
-        ],
-      });
-      addAudit(
-        p,
-        "Started project goal",
-        goal.id,
-        `${goal.kind}: ${goal.description}`,
-      );
-    });
-    onStarted?.();
+      onStarted?.();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The goal could not be started with the selected sources.", "warning", "Review goal sources");
+    } finally {
+      setStarting(false);
+    }
   };
   return (
     <div className="modal-backdrop kickoff-backdrop" role="presentation">
@@ -4682,21 +4962,36 @@ function ProjectKickoff({
           <div className="context-note">
             <Sparkles />
             <div>
-              <b>Review sources before AI analysis</b>
+              <b>{project.sourceAnalysisStatus === "ready" ? "Sources discovered; review before using as evidence" : "BA Mate is preparing project context"}</b>
               <p>
                 {project.sources.length
-                  ? `${project.sources.length} source${project.sources.length === 1 ? "" : "s"} can inform this goal.`
-                  : "This is a fresh workspace; begin from scratch or add material later."}
+                  ? `${project.sources.length} source${project.sources.length === 1 ? "" : "s"} found. Only sources you review and select can support this goal.`
+                  : "Folder discovery and optional local AI planning continue in the background. You can choose a goal now or wait for suggestions."}
               </p>
             </div>
           </div>
+          <div className="kickoff-source-selection">
+            <div><b>Sources for this goal</b><small>Select reviewed sources that are relevant to this goal. You can change the selection later.</small></div>
+            {project.sources.some(goalSelectableSource) ? project.sources.filter(goalSelectableSource).map(source =>
+              <label key={source.id} className="kickoff-source-option">
+                <input type="checkbox" checked={selectedSourceIds.includes(source.id)} onChange={event => setSelectedSourceIds(current =>
+                  event.target.checked ? [...new Set([...current, source.id])] : current.filter(id => id !== source.id))} />
+                <span><strong>{source.relativePath ?? source.name}</strong><small>{source.type} · Reviewed revision {source.sha256?.slice(0, 12) ?? "unavailable"}</small></span>
+              </label>) : <p>No current reviewed source revisions are available yet. You can start the goal and add sources after reviewing them.</p>}
+            {project.sources.some(source => source.approved && !goalSelectableSource(source)) && <p>Some older source approvals have no usable folder revision. Review those files in Sources before selecting them for new work.</p>}
+          </div>
+          {project.agentRun?.status === "running" && <p className="setup-agent-status" role="status"><RefreshCw size={15} /> BA Mate's source, planning and governance roles are preparing suggestions…</p>}
+          {project.agentRun?.status === "failed" && <p className="setup-agent-status" role="status">Background suggestions are unavailable: {project.agentRun.error}. You can continue manually.</p>}
+          {project.agentRun?.status === "local_model_required" && <p className="setup-agent-status" role="status">{project.agentRun.message}</p>}
+          {!!planning?.goals?.length && <div className="setup-agent-suggestions"><b>BA Mate suggests</b><p>These are proposals from tentative project context. You choose the work to start.</p>{planning.goals.map(goal => <button key={`${goal.kind}:${goal.title}`} onClick={() => { setKind(goal.kind); setGoalTitle(goal.title); setDescription(goal.reason); }}><Sparkles size={16} /><span><strong>{goal.title}</strong><small>{goal.reason}</small></span><ChevronRight size={16} /></button>)}</div>}
+          {suggestedQuestions.length > 0 && <div className="setup-agent-suggestions"><b>Questions to consider</b><p>Adopt a question to track it. BA Mate cannot answer for a stakeholder.</p>{suggestedQuestions.map(question => <div className="setup-agent-question" key={question}><span>{question}</span><Button disabled={project.clarifications.some(item => item.question === question)} onClick={() => update(p => { const id = uid("CQ"); p.clarifications.push({ id, priority: "Important", question, rationale: "BA Mate suggested this from tentative project context; confirm with the responsible person.", sourceId: "PROJECT-BRIEF", owner: "Business analyst", status: "Unanswered", suggestions: [], affects: [] }); addAudit(p, "Adopted clarification question", id, question); })}>{project.clarifications.some(item => item.question === question) ? "Added" : "Add question"}</Button></div>)}</div>}
           <div className="kickoff-options">
             {options.map(([value, title, detail]) => (
               <button
                 key={value}
                 className={kind === value ? "selected" : ""}
                 aria-pressed={kind === value}
-                onClick={() => setKind(value)}
+                onClick={() => { setKind(value); setGoalTitle(""); }}
               >
                 <i>
                   {value === "New discovery" ? (
@@ -4705,6 +5000,10 @@ function ProjectKickoff({
                     <FileText />
                   ) : value === "Requirements addendum" ? (
                     <FilePlus2 />
+                  ) : value === "Stakeholder clarification" ? (
+                    <CircleHelp />
+                  ) : value === "Policy & governance review" ? (
+                    <ShieldCheck />
                   ) : (
                     <Boxes />
                   )}
@@ -4748,8 +5047,8 @@ function ProjectKickoff({
           </span>
           <div className="modal-footer-actions">
             {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-            <Button kind="primary" onClick={start}>
-              <Sparkles size={16} /> Start this goal
+            <Button kind="primary" onClick={() => void start()} disabled={starting}>
+              <Sparkles size={16} /> {starting ? "Checking sources…" : "Start this goal"}
             </Button>
           </div>
         </footer>
@@ -4858,7 +5157,9 @@ function GoalsView({
   evaluationRunId?: string;
   stageFeedback: StageFeedback[];
 }) {
-  const [creating, setCreating] = useState(false);
+  const location = useLocation();
+  const [creating, setCreating] = useState(() => new URLSearchParams(location.search).has("new"));
+  useEffect(() => { if (new URLSearchParams(location.search).has("new")) setCreating(true); }, [location.search]);
   const [pendingDelete, setPendingDelete] = useState<ProjectGoal>();
   const current = activeGoal(project);
   const activate = (goalId: string) =>
@@ -5036,7 +5337,8 @@ function GoalsView({
                 </div>
                 <div>
                   <dt>Context</dt>
-                  <dd>{goal.sourceIds.length} sources</dd>
+                  <dd>{goal.sourceIds.filter(id => project.sources.some(source => source.id === id && goalSourceCurrent(goal, source))).length} current
+                    {goal.sourceIds.some(id => !project.sources.some(source => source.id === id && goalSourceCurrent(goal, source))) && " · review needed"}</dd>
                 </div>
                 <div>
                   <dt>Deliverables</dt>
@@ -5123,6 +5425,10 @@ function NewProjectModal({
     | "Commerce & customer"
     | "Public service"
     | "Digital product"
+    | "Health & care"
+    | "Education"
+    | "Nonprofit & community"
+    | "Operations & logistics"
     | "Blank";
   const templates: Record<
     TemplateName,
@@ -5171,13 +5477,29 @@ function NewProjectModal({
       domain: "Digital product",
       pack: "Product data responsibility",
     },
+    "Health & care": {
+      description: "Patient safety, clinical review and sensitive records.", icon: <ShieldCheck />,
+      seed: 1, domain: "Health & care", pack: "Health information and safety",
+    },
+    Education: {
+      description: "Learner access, safeguarding and academic decisions.", icon: <BookOpen />,
+      seed: 1, domain: "Education", pack: "Learner privacy and fairness",
+    },
+    "Nonprofit & community": {
+      description: "Community outcomes, consent and responsible case work.", icon: <Users />,
+      seed: 1, domain: "Nonprofit & community", pack: "Community consent and inclusion",
+    },
+    "Operations & logistics": {
+      description: "Operational handoffs, safety and exception handling.", icon: <Boxes />,
+      seed: 2, domain: "Operations & logistics", pack: "Operational safety and accountability",
+    },
     Blank: {
       description:
         "Start with core safeguards and shape the workspace yourself.",
       icon: <Plus />,
       seed: 0,
       domain: "General",
-      pack: "Project-defined safeguards",
+      pack: "",
     },
   };
   const [step, setStep] = useState(1);
@@ -5186,15 +5508,17 @@ function NewProjectModal({
   const [folder, setFolder] = useState("Managed project folder");
   const [workspaceCandidate, setWorkspaceCandidate] = useState<WorkspaceCandidate>();
   const [projectBrief, setProjectBrief] = useState("");
-  const [assist, setAssist] = useState(true);
+  const [customDomain, setCustomDomain] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [analysing, setAnalysing] = useState(false);
-  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [filePlans, setFilePlans] = useState<Record<string, { name: string; folder: string }>>({});
+  const [newFolder, setNewFolder] = useState("");
+  const [createdFolders, setCreatedFolders] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [policyPacks, setPolicyPacks] = useState<string[]>([
     "Core responsible BA",
-    "Privacy & data handling",
     "Human oversight & traceability",
+    "Privacy & data handling",
+    "Financial services fairness",
   ]);
   const [aiDialog, setAiDialog] = useState<"project" | "governance" | null>(
     null,
@@ -5202,9 +5526,13 @@ function NewProjectModal({
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiProposal, setAiProposal] = useState<{
     template: TemplateName;
-    safeguards: string[];
+    domain: string;
+    policies: string[];
     summary: string;
   } | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [allowRemoteDescription, setAllowRemoteDescription] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const folderFileRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -5216,40 +5544,25 @@ function NewProjectModal({
     Boolean(aiDialog),
   );
   const meta = templates[template];
-  const aiSuggestions = useMemo(() => {
-    const context = `${template} ${projectBrief}`.toLowerCase();
-    const suggestions = ["Evidence provenance & traceability"];
-    if (/health|student|public|access|inclusive|disab/.test(context))
-      suggestions.push("Accessibility & inclusive service design");
-    if (/bank|finance|credit|decision|hr|people|employee|student/.test(context))
-      suggestions.push("Human review for consequential decisions");
-    if (/data|personal|customer|employee|student|privacy/.test(context))
-      suggestions.push("Data minimization & retention review");
-    return suggestions;
-  }, [template, projectBrief]);
-  const [extractedFiles, setExtractedFiles] = useState<Record<string, Awaited<ReturnType<typeof importSource>>>>({});
   const fileKey = (file: File) => relativePathForFile(file);
   const addFiles = async (selected: FileList | null) => {
     if (!selected?.length) return;
     const selectedFiles = Array.from(selected).filter(file => isSupportedSourceName(file.name));
     const skipped = selected.length - selectedFiles.length;
     if (!selectedFiles.length) { notify("This selection does not contain a supported source file.", "warning"); if (fileRef.current) fileRef.current.value = ""; if (folderFileRef.current) folderFileRef.current.value = ""; return; }
-    setAnalysing(true); setAnalysisComplete(false);
-    try {
-      for (const file of selectedFiles) {
-        const result = await importSource(file);
-        const key = fileKey(file);
-        setExtractedFiles(current => ({ ...current, [key]: result }));
-        setFiles(current => [...current.filter(existing => fileKey(existing) !== key), file]);
-      }
-      setAnalysisComplete(true);
-      if (skipped) notify(`${skipped} unsupported or hidden file${skipped === 1 ? " was" : "s were"} skipped.`, "warning");
-    } catch (e) { notify((e as Error).message, "danger", "Source import failed"); }
-    finally { setAnalysing(false); if (fileRef.current) fileRef.current.value = ""; if (folderFileRef.current) folderFileRef.current.value = ""; }
+    for (const file of selectedFiles) {
+      const key = fileKey(file);
+      setFiles(current => [...current.filter(existing => fileKey(existing) !== key), file]);
+      setFilePlans(current => ({ ...current, [key]: { name: file.name,
+        folder: file.webkitRelativePath ? file.webkitRelativePath.split("/").slice(0, -1).join("/") : "Uploaded Sources" } }));
+    }
+    if (skipped) notify(`${skipped} unsupported or hidden file${skipped === 1 ? " was" : "s were"} skipped.`, "warning");
+    if (fileRef.current) fileRef.current.value = "";
+    if (folderFileRef.current) folderFileRef.current.value = "";
   };
   const removeFile = (key: string) => {
     setFiles((current) => current.filter((file) => fileKey(file) !== key));
-    setExtractedFiles(current => { const next = { ...current }; delete next[key]; return next; });
+    setFilePlans(current => { const next = { ...current }; delete next[key]; return next; });
   };
   const chooseFolder = async () => {
     try {
@@ -5271,47 +5584,30 @@ function NewProjectModal({
   const describeToBaMate = (mode: "project" | "governance") => {
     setAiPrompt(mode === "project" ? projectBrief : "");
     setAiProposal(null);
+    setAiError("");
     setAiDialog(mode);
   };
-  const generateAiProposal = () => {
-    const context = aiPrompt.toLowerCase();
-    let recommended: TemplateName = "Blank";
-    if (/bank|finance|loan|credit|payment|insurance/.test(context))
-      recommended = "Financial services";
-    else if (/employee|hr|workplace|leave|recruit|staff/.test(context))
-      recommended = "People & workplace";
-    else if (/shop|retail|customer|order|return|commerce/.test(context))
-      recommended = "Commerce & customer";
-    else if (
-      /student|citizen|government|public|university|health/.test(context)
-    )
-      recommended = "Public service";
-    else if (/app|platform|software|digital|saas|product/.test(context))
-      recommended = "Digital product";
-    const safeguards = ["Evidence provenance & traceability"];
-    if (/personal|data|privacy|patient|student|employee|customer/.test(context))
-      safeguards.push("Data minimization & retention review");
-    if (/decision|approve|eligib|loan|hr|student/.test(context))
-      safeguards.push("Human review for consequential decisions");
-    if (/access|student|public|health|inclusive|disab/.test(context))
-      safeguards.push("Accessibility & inclusive service design");
-    setAiProposal({
-      template: recommended,
-      safeguards,
-      summary:
-        aiDialog === "project"
-          ? `Template rules matched this brief to the ${recommended} foundation and prepared a project starting point.`
-          : `Template rules identified ${safeguards.length} governance safeguards that can be added to this project.`,
-    });
+  const generateAiProposal = async () => {
+    if (!aiDialog || !aiPrompt.trim() || aiBusy) return;
+    setAiBusy(true); setAiError("");
+    try {
+      const result = await api<{ proposal: { template: TemplateName; domain: string; policies: string[]; summary: string } }>("/api/setup/propose", {
+        method: "POST", body: JSON.stringify({ kind: aiDialog, description: aiPrompt,
+          project_description: projectBrief, current_policies: policyPacks,
+          cloud_allowed: allowRemoteDescription }),
+      });
+      setAiProposal(result.proposal);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "BA Mate could not prepare a proposal.");
+    } finally { setAiBusy(false); }
   };
   const applyAiProposal = () => {
     if (!aiProposal || !aiDialog) return;
     if (aiDialog === "project") {
       setProjectBrief(aiPrompt);
       setTemplate(aiProposal.template);
-      setPolicyPacks((current) => [
-        ...new Set([...current, ...aiProposal.safeguards]),
-      ]);
+      setCustomDomain(aiProposal.domain);
+      setPolicyPacks(aiProposal.policies);
       if (aiProposal.template === "Blank")
         appNotice(
           "BA Mate created a blank foundation because the description did not match a guided template.",
@@ -5321,49 +5617,55 @@ function NewProjectModal({
           `BA Mate applied the ${aiProposal.template} foundation to your project.`,
         );
     } else {
-      setPolicyPacks((current) => [
-        ...new Set([...current, ...aiProposal.safeguards]),
-      ]);
-      setProjectBrief((current) => current || aiPrompt);
+      setPolicyPacks(aiProposal.policies);
       appNotice(
-        "BA Mate added its governance recommendations to the editable policy pack.",
+        "BA Mate's full governance proposal is now in the editable policy pack.",
       );
     }
     setAiDialog(null);
   };
   const create = async () => {
-    if (creating || analysing) return;
+    if (creating) return;
     setCreating(true);
     const p = JSON.parse(
       JSON.stringify(freshState().projects[meta.seed]),
     ) as Project;
     p.id = `project-${Date.now()}`;
     p.name = name.trim() || "Untitled BA project";
-    p.domain = meta.domain;
+    p.domain = customDomain.trim() || meta.domain;
     p.description =
       projectBrief.trim() ||
-      `A ${meta.domain.toLowerCase()} project created with the ${template} template.`;
+      `A ${p.domain.toLowerCase()} project created with the ${template} template.`;
     p.folderName = folder.trim() || "Managed project folder";
+    p.workspaceFolders = createdFolders;
     p.gate = "Setup";
     p.gateIndex = 0;
     p.template = template;
     p.governancePacks = [
-      ...new Set([...policyPacks.filter(Boolean), meta.pack]),
+      ...new Set(["Core responsible BA", "Human oversight & traceability", ...policyPacks.filter(Boolean)]),
     ];
-    p.sources = files.map((file, index) => ({
+    let uploads: { file: File; plan: { name: string; folder: string }; destination: string; data: string }[];
+    try { uploads = await Promise.all(files.map(async file => {
+      const plan = filePlans[fileKey(file)] ?? { name: file.name, folder: "Uploaded Sources" };
+      const destination = [plan.folder.trim().replace(/^\/+|\/+$/g, ""), plan.name.trim()].filter(Boolean).join("/");
+      if (!plan.name.trim() || /[\\/]/.test(plan.name) || !isSupportedSourceName(plan.name) || plan.folder.split("/").some(part => part === ".."))
+        throw new Error(`Choose a valid supported file name and folder for ${file.name}.`);
+      return { file, plan, destination, data: await readFileForWorkspace(file) };
+    })); } catch (error) {
+      setCreating(false);
+      appNotice(error instanceof Error ? error.message : "Source files could not be read.", "danger", "Project creation paused");
+      return;
+    }
+    p.sources = uploads.map(({ file, plan, destination, data }, index) => ({
       id: `SRC-${String(index + 1).padStart(2, "0")}`,
-      name: file.name,
-      relativePath: relativePathForFile(file),
-      type: sourceTypeForName(file.name),
+      name: plan.name,
+      relativePath: destination,
+      type: sourceTypeForName(plan.name),
       status: "Needs review" as const,
       classification: "Project only" as const,
       provenance: "Added during project setup",
-      concepts: ["Extracted text awaits BA review"],
-      content: extractedFiles[fileKey(file)]?.content,
-      originalBase64: extractedFiles[fileKey(file)]?.original_base64,
-      sha256: extractedFiles[fileKey(file)]?.sha256,
-      passages: extractedFiles[fileKey(file)]?.passages,
-      extractionLimitations: extractedFiles[fileKey(file)]?.limitations,
+      concepts: ["Queued for background extraction and BA review"],
+      originalBase64: data,
       version: 1,
       approved: false,
       immutable: true,
@@ -5395,9 +5697,9 @@ function NewProjectModal({
     if (files.length)
       addAudit(
         p,
-        "Analyzed knowledge base",
+        "Queued knowledge base analysis",
         `${files.length} source${files.length === 1 ? "" : "s"}`,
-        "Source materials were added to the project context during setup.",
+        "Source materials will be extracted after project creation and require BA review.",
       );
     addAudit(
       p,
@@ -5408,12 +5710,14 @@ function NewProjectModal({
     p.cloudAllowed = false; p.aiRuns = [];
     try {
       const reference = await createProjectWorkspace(p.id, p.name, workspaceCandidate);
-      await writeProjectFiles(reference, files.map(file => ({ name: file.name, relativePath: relativePathForFile(file), data: extractedFiles[fileKey(file)].original_base64 })));
+      await createProjectDirectories(reference, createdFolders);
+      const written = await writeProjectFiles(reference, uploads.map(({ plan, destination, data }) => ({ name: plan.name, relativePath: destination, data })));
+      written.forEach((path, index) => { if (p.sources[index]) { p.sources[index].relativePath = path; p.sources[index].name = path.split("/").at(-1) ?? p.sources[index].name; p.sources[index].originalBase64 = undefined; } });
       p.workspaceId = reference.workspaceId;
       p.workspaceKind = reference.workspaceKind;
       p.workspacePath = reference.displayPath;
       p.folderName = reference.folderName;
-      addAudit(p, "Materialized project folder", reference.folderName, `${files.length} original source${files.length === 1 ? " was" : "s were"} copied into the sources folder.`);
+      addAudit(p, "Materialized project folder", reference.folderName, `${files.length} uploaded source${files.length === 1 ? " was" : "s were"} copied to the selected locations; existing folder contents will be discovered in the background.`);
       onCreate(p);
     } catch (error) {
       appNotice(error instanceof Error ? error.message : "The project folder could not be created.", "danger", "Project creation failed");
@@ -5469,13 +5773,10 @@ function NewProjectModal({
                 <Sparkles size={20} />
                 <div>
                   <b>Give BA Mate the right starting context</b>
-                  <p>
-                    Choose a foundation manually, or let BA Mate turn your
-                    description into a matching project foundation.
-                  </p>
                 </div>
+                <SetupTip step={1} title="About the project foundation">Choose a template or describe the work. BA Mate can propose a suitable foundation, domain and safeguards. You can review them before creating the project.</SetupTip>
               </div>
-              <div className="setup-two-column">
+              <div className="setup-two-column setup-name-only">
                 <label className="editor-field">
                   <span>Project name</span>
                   <input
@@ -5484,17 +5785,10 @@ function NewProjectModal({
                     placeholder="e.g. Student support service"
                   />
                 </label>
-                <label className="editor-field">
-                  <span>Project workspace</span>
-                  <input
-                    value={folder}
-                    readOnly
-                  />
-                </label>
               </div>
               <div className="field-heading">
                 <b>Choose a template</b>
-                <span>5 guided foundations plus a blank workspace</span>
+                <span>9 guided foundations plus a blank workspace</span>
               </div>
               <div className="template-cards expanded">
                 {(Object.keys(templates) as TemplateName[]).map((option) => (
@@ -5502,7 +5796,12 @@ function NewProjectModal({
                     key={option}
                     className={template === option ? "selected" : ""}
                     aria-pressed={template === option}
-                    onClick={() => setTemplate(option)}
+                    onClick={() => {
+                      setTemplate(option);
+                      setCustomDomain("");
+                      const defaults = new Set(Object.values(templates).map(item => item.pack));
+                      setPolicyPacks(current => [...new Set([...current.filter(pack => !defaults.has(pack)), ...(option === "Blank" ? [] : [templates[option].pack])])]);
+                    }}
                   >
                     <i>{templates[option].icon}</i>
                     <b>{option}</b>
@@ -5511,6 +5810,8 @@ function NewProjectModal({
                   </button>
                 ))}
               </div>
+              {template === "Blank" && <label className="editor-field"><span>Project category or domain</span><input value={customDomain} onChange={event => setCustomDomain(event.target.value)} placeholder="e.g. Environmental services" /></label>}
+              {template !== "Blank" && customDomain && customDomain !== meta.domain && <p className="setup-domain-note">BA Mate classified this project as <b>{customDomain}</b>.</p>}
               <div className="ba-mate-action">
                 <div>
                   <Sparkles size={19} />
@@ -5539,21 +5840,17 @@ function NewProjectModal({
                 <Database size={20} />
                 <div>
                   <b>Build the project knowledge base</b>
-                  <p>
-                    Add the materials BA Mate should understand. Analysis begins
-                    locally as files are included.
-                  </p>
                 </div>
+                <SetupTip step={2} title="About workspace and sources">Create a folder named for this project or select an existing one. BA Mate needs read and write access. All supported files in that folder, including nested folders, are discovered after creation and held for BA review.</SetupTip>
               </div>
               <div className="folder-path">
                 <Folder size={19} />
                 <div>
-                  <b>{folder}</b>
-                  <small>Local project workspace</small>
+                  <b>{workspaceCandidate ? folder : name.trim() || "Untitled BA project"}</b>
+                  <small>{workspaceCandidate ? "Existing folder · read and write access required" : "New managed folder named from this project"}</small>
                 </div>
-                <Button onClick={chooseFolder}>
-                  <Folder size={16} /> Choose folder
-                </Button>
+                <Button onClick={() => { setWorkspaceCandidate(undefined); setFolder("Managed project folder"); }}><Plus size={16} /> Create new</Button>
+                <Button onClick={chooseFolder}><Folder size={16} /> Choose existing</Button>
               </div>
               <input
                 ref={fileRef}
@@ -5585,32 +5882,24 @@ function NewProjectModal({
                 <span className="drop-action">Browse files</span>
               </button>
               <Button onClick={() => folderFileRef.current?.click()}>
-                <Folder size={16} /> Add a folder of files
+                <Folder size={16} /> Add or create folders
               </Button>
+              <div className="setup-folder-creator">
+                <input aria-label="New folder in project" value={newFolder} onChange={event => setNewFolder(event.target.value)} placeholder="New folder path, e.g. Interviews" />
+                <Button onClick={() => { const clean = newFolder.trim().replace(/^\/+|\/+$/g, ""); if (!clean || clean.split("/").some(part => part === ".." || part === ".")) { appNotice("Enter a folder name inside the project.", "warning"); return; } setCreatedFolders(current => [...new Set([...current, clean])]); setNewFolder(""); }}>Create folder</Button>
+              </div>
+              {createdFolders.length > 0 && <p className="setup-folder-list">Created for this project: {createdFolders.join(" · ")}</p>}
               {files.length > 0 ? (
                 <>
                   <div className="analysis-status">
-                    <span className={analysing ? "pulse" : ""}>
-                      {analysing ? (
-                        <RefreshCw size={17} />
-                      ) : (
-                        <CheckCircle2 size={17} />
-                      )}
-                    </span>
+                    <span><Clock3 size={17} /></span>
                     <div>
-                      <b>
-                        {analysing
-                          ? "BA Mate is analyzing your knowledge base…"
-                          : "Source extraction is complete"}
-                      </b>
+                      <b>Ready for background analysis</b>
                       <small>
-                        {files.length} item{files.length === 1 ? "" : "s"} will
-                        remain as approved project context.
+                        {files.length} uploaded item{files.length === 1 ? "" : "s"}; existing folder contents will also be discovered after creation.
                       </small>
                     </div>
-                    <Badge tone={analysing ? "warning" : "success"}>
-                      {analysing ? "Analyzing" : "Awaiting review"}
-                    </Badge>
+                    <Badge tone="warning">Queued</Badge>
                   </div>
                   <div className="knowledge-file-list">
                     {files.map((file) => (
@@ -5618,18 +5907,12 @@ function NewProjectModal({
                         <i>
                           <FileText size={17} />
                         </i>
-                        <span>
-                          <b>{file.name}</b>
-                          <small>
-                            {Math.max(1, Math.round(file.size / 1024))} KB ·{" "}
-                            {analysing
-                              ? "Queued for analysis"
-                              : "Extracted — review required"}
-                          </small>
+                        <span className="setup-file-fields">
+                          <input aria-label={`Name for ${file.name}`} value={filePlans[fileKey(file)]?.name ?? file.name} onChange={event => setFilePlans(current => ({ ...current, [fileKey(file)]: { ...(current[fileKey(file)] ?? { folder: "Uploaded Sources", name: file.name }), name: event.target.value } }))} />
+                          <input aria-label={`Destination folder for ${file.name}`} list="setup-folder-options" value={filePlans[fileKey(file)]?.folder ?? "Uploaded Sources"} onChange={event => setFilePlans(current => ({ ...current, [fileKey(file)]: { ...(current[fileKey(file)] ?? { folder: "Uploaded Sources", name: file.name }), folder: event.target.value } }))} />
+                          <small>{Math.max(1, Math.round(file.size / 1024))} KB · Analysis starts after project creation</small>
                         </span>
-                        <StatusBadge
-                          value="Needs review"
-                        />
+                        <StatusBadge value="Queued" />
                         <IconButton
                           label={`Remove ${file.name}`}
                           onClick={() => removeFile(fileKey(file))}
@@ -5639,6 +5922,7 @@ function NewProjectModal({
                       </div>
                     ))}
                   </div>
+                  <datalist id="setup-folder-options"><option value="Uploaded Sources" />{createdFolders.map(item => <option key={item} value={item} />)}</datalist>
                 </>
               ) : (
                 <div className="knowledge-empty">
@@ -5660,11 +5944,8 @@ function NewProjectModal({
                 <ShieldCheck size={20} />
                 <div>
                   <b>Review the creation summary</b>
-                  <p>
-                    Review and edit the governance context before creating the
-                    workspace.
-                  </p>
                 </div>
+                <SetupTip step={3} title="About governance">BA Mate can suggest a policy set from your project description and further instructions. Review every addition, edit or removal. Core human approval, privacy and evidence safeguards remain in force.</SetupTip>
               </div>
               <div className="review-project refined">
                 <div>
@@ -5678,9 +5959,7 @@ function NewProjectModal({
                 <div>
                   <span>Knowledge base</span>
                   <b>
-                    {files.length
-                      ? `${files.length} extracted material${files.length === 1 ? "" : "s"}`
-                      : "No material yet"}
+                    {files.length ? `${files.length} upload${files.length === 1 ? "" : "s"} queued` : "Workspace will be scanned"}
                   </b>
                 </div>
                 <div>
@@ -5725,6 +6004,7 @@ function NewProjectModal({
                     <ShieldCheck size={16} />
                     <input
                       value={pack}
+                      readOnly={['Core responsible BA', 'Human oversight & traceability'].includes(pack)}
                       onChange={(e) =>
                         setPolicyPacks((current) =>
                           current.map((item, itemIndex) =>
@@ -5733,7 +6013,7 @@ function NewProjectModal({
                         )
                       }
                     />
-                    {index > 0 && (
+                    {!['Core responsible BA', 'Human oversight & traceability'].includes(pack) && (
                       <IconButton
                         label={`Remove ${pack}`}
                         onClick={() =>
@@ -5772,7 +6052,7 @@ function NewProjectModal({
               Continue <ArrowRight size={16} />
             </Button>
           ) : (
-            <Button kind="primary" onClick={() => void create()} disabled={analysing || creating}>
+            <Button kind="primary" onClick={() => void create()} disabled={creating}>
               {creating ? <RefreshCw size={16} /> : <Check size={16} />} {creating ? "Creating project folder…" : "Create local project"}
             </Button>
           )}
@@ -5823,14 +6103,16 @@ function NewProjectModal({
                         : "Example: Student data must be private, retention must be clear, and any decision needs human review."
                     }
                   />
+                  <label className="setup-remote-choice"><input type="checkbox" checked={allowRemoteDescription} onChange={event => setAllowRemoteDescription(event.target.checked)} /> Allow the configured remote AI provider to process this description if one is selected</label>
+                  {aiError && <p className="setup-ai-error" role="alert">{aiError}</p>}
                   <footer>
                     <Button onClick={() => setAiDialog(null)}>Cancel</Button>
                     <Button
                       kind="primary"
-                      disabled={!aiPrompt.trim()}
-                      onClick={generateAiProposal}
+                      disabled={!aiPrompt.trim() || aiBusy}
+                      onClick={() => void generateAiProposal()}
                     >
-                      <Sparkles size={16} /> Ask BA Mate
+                      <Sparkles size={16} /> {aiBusy ? "Preparing proposal…" : "Ask BA Mate"}
                     </Button>
                   </footer>
                 </>
@@ -5842,7 +6124,7 @@ function NewProjectModal({
                       <b>BA Mate response</b>
                       <p>{aiProposal.summary}</p>
                       <div className="tag-list">
-                        {aiProposal.safeguards.map((item) => (
+                        {aiProposal.policies.map((item) => (
                           <span key={item}>{item}</span>
                         ))}
                       </div>
@@ -5854,7 +6136,7 @@ function NewProjectModal({
                       <b>{aiProposal.template}</b>
                       <small>
                         {aiProposal.template === "Blank"
-                          ? "No close template was found, so BA Mate will create a blank workspace."
+                          ? `No close template was found. BA Mate proposes a blank ${aiProposal.domain} foundation.`
                           : "This template will supply the initial workspace structure."}
                       </small>
                     </div>
@@ -5867,7 +6149,7 @@ function NewProjectModal({
                       <Check size={16} />
                       {aiDialog === "project"
                         ? "Apply project foundation"
-                        : "Add to governance pack"}
+                        : "Apply reviewed policy list"}
                     </Button>
                   </footer>
                 </>
@@ -5875,387 +6157,6 @@ function NewProjectModal({
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-  return (
-    <div className="modal-backdrop">
-      <div className="modal large new-project-modal">
-        <header>
-          <div>
-            <span className="eyebrow">
-              New local project · Step {step} of 3
-            </span>
-            <h2>{stageTitles[step - 1]}</h2>
-          </div>
-          <IconButton label="Close" onClick={onClose}>
-            <X />
-          </IconButton>
-        </header>
-        <div className="setup-progress" aria-label={`Step ${step} of 3`}>
-          {stageTitles.map((label, index) => (
-            <div
-              key={label}
-              className={classNames(
-                index + 1 < step && "complete",
-                index + 1 === step && "active",
-              )}
-            >
-              <i>{index + 1 < step ? <Check size={13} /> : index + 1}</i>
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
-        <div className="modal-body">
-          {step === 1 && (
-            <div className="setup-step">
-              <div className="setup-intro">
-                <Sparkles size={20} />
-                <div>
-                  <b>Give BA Mate the right starting context</b>
-                  <p>
-                    Choose a foundation, then describe the outcome, people and
-                    constraints in your own words. Everything remains editable
-                    after creation.
-                  </p>
-                </div>
-              </div>
-              <div className="setup-two-column">
-                <label className="editor-field">
-                  <span>Project name</span>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Student support service"
-                  />
-                </label>
-                <label className="editor-field">
-                  <span>Project workspace</span>
-                  <input
-                    value={folder}
-                    readOnly
-                  />
-                </label>
-              </div>
-              <div className="field-heading">
-                <b>Choose a template</b>
-                <span>5 guided foundations plus a blank workspace</span>
-              </div>
-              <div className="template-cards expanded">
-                {(Object.keys(templates) as TemplateName[]).map((option) => (
-                  <button
-                    key={option}
-                    className={template === option ? "selected" : ""}
-                    onClick={() => setTemplate(option)}
-                  >
-                    <i>{templates[option].icon}</i>
-                    <b>{option}</b>
-                    <span>{templates[option].description}</span>
-                    {template === option && <CheckCircle2 size={16} />}
-                  </button>
-                ))}
-              </div>
-              <label className="editor-field project-brief">
-                <span>
-                  Describe your project to BA Mate{" "}
-                  <Badge tone="purple">Optional AI support</Badge>
-                </span>
-                <textarea
-                  value={projectBrief}
-                  onChange={(e) => setProjectBrief(e.target.value)}
-                  placeholder="Describe the problem, users, goals, concerns or any rules BA Mate should understand…"
-                />
-                <small>
-                  BA Mate will use this as editable project context and suggest
-                  relevant ethics, privacy and governance considerations.
-                </small>
-              </label>
-              <label className="assist-toggle">
-                <input
-                  type="checkbox"
-                  checked={assist}
-                  onChange={(e) => setAssist(e.target.checked)}
-                />
-                <Sparkles size={17} />
-                <span>
-                  <b>Ask BA Mate to shape the project context</b>
-                  <small>
-                    Creates editable suggested safeguards from your description
-                    and selected template.
-                  </small>
-                </span>
-              </label>
-            </div>
-          )}
-          {step === 2 && (
-            <div className="setup-step">
-              <div className="setup-intro">
-                <Database size={20} />
-                <div>
-                  <b>Build the project knowledge base</b>
-                  <p>
-                    Add the materials BA Mate should understand. Analysis begins
-                    locally as files are included and their context stays
-                    available across the workspace.
-                  </p>
-                </div>
-              </div>
-              <div className="knowledge-actions">
-                <div className="folder-path">
-                  <Folder size={19} />
-                  <div>
-                    <b>{folder}</b>
-                    <small>Local project workspace</small>
-                  </div>
-                  <Button onClick={chooseFolder}>
-                    <Folder size={16} /> Choose folder
-                  </Button>
-                </div>
-                <input
-                  ref={fileRef}
-                  hidden
-                  type="file"
-                  aria-label="Add project knowledge-base files"
-                  multiple
-                  accept={SOURCE_ACCEPT}
-                  onChange={(e) => addFiles(e.target.files)}
-                />
-                <input
-                  ref={(node) => { folderFileRef.current = node; if (node) node.setAttribute("webkitdirectory", ""); }}
-                  hidden
-                  type="file"
-                  aria-label="Add a folder of project knowledge-base files"
-                  multiple
-                  accept={SOURCE_ACCEPT}
-                  onChange={(e) => addFiles(e.target.files)}
-                />
-                <button
-                  className="knowledge-drop"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload size={24} />
-                  <b>Add project files</b>
-                  <span>
-                    PDF, DOCX, text, Markdown, CSV, Excel, images, audio and video
-                  </span>
-                  <span className="drop-action">Browse files</span>
-                </button>
-                <Button onClick={() => folderFileRef.current?.click()}>
-                  <Folder size={16} /> Add a folder of files
-                </Button>
-              </div>
-              {files.length > 0 ? (
-                <>
-                  <div className="analysis-status">
-                    <span className={analysing ? "pulse" : ""}>
-                      {analysing ? (
-                        <RefreshCw size={17} />
-                      ) : (
-                        <CheckCircle2 size={17} />
-                      )}
-                    </span>
-                    <div>
-                      <b>
-                        {analysing
-                          ? "BA Mate is analyzing your knowledge base…"
-                          : "Source extraction is complete"}
-                      </b>
-                      <small>
-                        {analysing
-                          ? "Extracting concepts, topics and potential governance concerns in the background."
-                          : `${files.length} item${files.length === 1 ? "" : "s"} will be available to BA Mate as approved project context.`}
-                      </small>
-                    </div>
-                    <Badge tone={analysing ? "warning" : "success"}>
-                      {analysing ? "Analyzing" : "Awaiting review"}
-                    </Badge>
-                  </div>
-                  <div className="knowledge-file-list">
-                    {files.map((file) => (
-                      <div key={fileKey(file)}>
-                        <i>
-                          <FileText size={17} />
-                        </i>
-                        <span>
-                          <b>{file.name}</b>
-                          <small>
-                            {Math.max(1, Math.round(file.size / 1024))} KB ·{" "}
-                            {analysing
-                              ? "Queued for analysis"
-                              : "Extracted — review required"}
-                          </small>
-                        </span>
-                        <StatusBadge
-                          value="Needs review"
-                        />
-                        <IconButton
-                          label={`Remove ${file.name}`}
-                          onClick={() => removeFile(fileKey(file))}
-                        >
-                          <X size={16} />
-                        </IconButton>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="knowledge-empty">
-                  <FileInput size={24} />
-                  <div>
-                    <b>No material added yet</b>
-                    <p>
-                      You can create the workspace now and add sources later
-                      from Sources & context.
-                    </p>
-                  </div>
-                </div>
-              )}
-              <div className="context-note">
-                <Sparkles />
-                <div>
-                  <b>Agentic, but under your control</b>
-                  <p>
-                    BA Mate prepares context in the background; you can later
-                    inspect, include, exclude or edit every source and generated
-                    suggestion.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-          {step === 3 && (
-            <div className="setup-step">
-              <div className="setup-intro">
-                <ShieldCheck size={20} />
-                <div>
-                  <b>Review the creation summary</b>
-                  <p>
-                    Skim the governance context before creating the workspace.
-                    Policy packs and every project setting can be edited later.
-                  </p>
-                </div>
-              </div>
-              <div className="review-project refined">
-                <div>
-                  <span>Project</span>
-                  <b>{name || "Untitled BA project"}</b>
-                </div>
-                <div>
-                  <span>Template</span>
-                  <b>{template}</b>
-                </div>
-                <div>
-                  <span>Knowledge base</span>
-                  <b>
-                    {files.length
-                      ? `${files.length} extracted material${files.length === 1 ? "" : "s"}`
-                      : "No material yet"}
-                  </b>
-                </div>
-                <div>
-                  <span>AI project context</span>
-                  <b>
-                    {assist && projectBrief.trim()
-                      ? "Enabled"
-                      : "Manual configuration"}
-                  </b>
-                </div>
-              </div>
-              {assist && (
-                <div className="ai-suggestion-row">
-                  <Sparkles size={16} />
-                  <span>
-                    <b>BA Mate suggested safeguards</b>
-                    <small>{aiSuggestions.join(" · ")}</small>
-                  </span>
-                </div>
-              )}
-              <div className="policy-editor">
-                <header>
-                  <div>
-                    <b>Governance & policy pack</b>
-                    <p>
-                      Core safeguards are always retained; these packs add
-                      project-specific guidance.
-                    </p>
-                  </div>
-                  <Button onClick={addPolicy}>
-                    <Plus size={15} /> Add policy
-                  </Button>
-                </header>
-                {policyPacks.map((pack, index) => (
-                  <label key={`${pack}-${index}`}>
-                    <ShieldCheck size={16} />
-                    <input
-                      value={pack}
-                      onChange={(e) =>
-                        setPolicyPacks((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index ? e.target.value : item,
-                          ),
-                        )
-                      }
-                    />
-                    {index > 0 && (
-                      <IconButton
-                        label={`Remove ${pack}`}
-                        onClick={() =>
-                          setPolicyPacks((current) =>
-                            current.filter(
-                              (_, itemIndex) => itemIndex !== index,
-                            ),
-                          )
-                        }
-                      >
-                        <Trash2 size={15} />
-                      </IconButton>
-                    )}
-                  </label>
-                ))}
-              </div>
-              <label className="editor-field project-brief compact">
-                <span>
-                  Refine governance with BA Mate{" "}
-                  <Badge tone="purple">Optional</Badge>
-                </span>
-                <textarea
-                  value={projectBrief}
-                  onChange={(e) => setProjectBrief(e.target.value)}
-                  placeholder="Add any ethical, privacy, security, accessibility or governance expectations…"
-                />
-                <small>
-                  This project context remains editable from Governance & checks
-                  and the BA Mate assistant.
-                </small>
-              </label>
-              <div className="context-note warning">
-                <ShieldCheck />
-                <div>
-                  <b>Governance is layered and editable</b>
-                  <p>
-                    Human approval, privacy, uncertainty disclosure and
-                    traceability remain core safeguards. Your policy pack can
-                    add or strengthen project rules.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-        <footer>
-          <Button onClick={step === 1 ? onClose : () => setStep(step - 1)}>
-            {step === 1 ? "Cancel" : "Back"}
-          </Button>
-          {step < 3 ? (
-            <Button kind="primary" onClick={() => setStep(step + 1)}>
-              Continue <ArrowRight size={16} />
-            </Button>
-          ) : (
-            <Button kind="primary" onClick={() => void create()} disabled={analysing || creating}>
-              {creating ? <RefreshCw size={16} /> : <Check size={16} />} {creating ? "Creating project folder…" : "Create local project"}
-            </Button>
-          )}
-        </footer>
       </div>
     </div>
   );
@@ -6269,6 +6170,7 @@ export default function App() {
   const savedState = useRef<WorkspaceState | null>(null);
   const currentState = useRef(state);
   const saveFailureNotified = useRef(false);
+  const folderFailureNotified = useRef(new Set<string>());
   const pageContentRef = useRef<HTMLElement>(null);
   currentState.current = state;
   const [collapsed, setCollapsed] = useState(false);
@@ -6315,6 +6217,80 @@ export default function App() {
     }, 300);
     return () => window.clearTimeout(timer);
   }, [state, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    let stopped = false;
+    let running = false;
+    const refresh = async () => {
+      if (running || stopped) return;
+      running = true;
+      try {
+        for (const item of currentState.current.projects) {
+          if (!item.workspaceId || !item.workspaceKind || stopped) continue;
+          try {
+            const analysis = await getProjectAnalysis({ workspaceId: item.workspaceId, workspaceKind: item.workspaceKind, folderName: item.folderName, displayPath: item.workspacePath });
+            if (stopped) return;
+            if (analysis.status === "ready") folderFailureNotified.current.delete(item.id);
+            if (analysis.status === "ready") {
+              const currentProject = currentState.current.projects.find(project => project.id === item.id && project.workspaceId === item.workspaceId);
+              if (currentProject) {
+                const revised = Object.values(analysis.sources).filter(candidate => {
+                  const prior = currentProject.sources.find(source => source.relativePath === candidate.relative_path)
+                    ?? currentProject.sources.find(source => !source.analysisSignature && source.name === candidate.name && source.sha256 === candidate.sha256);
+                  return !prior || prior.sha256 !== candidate.sha256;
+                }).length;
+                const removed = currentProject.sources.filter(source => source.analysisSignature && source.relativePath &&
+                  !analysis.sources[source.relativePath] && source.status !== "Excluded").length;
+                if (revised || removed) appNotice(
+                  `${revised + removed} project source${revised + removed === 1 ? "" : "s"} ${revised + removed === 1 ? "needs" : "need"} review in ${item.name}. Existing approvals for changed files are withdrawn.`,
+                  "warning", "Project sources changed",
+                );
+              }
+            }
+            setState(current => {
+              const target = current.projects.find(project => project.id === item.id && project.workspaceId === item.workspaceId);
+              if (!target) return current;
+              const next = structuredClone(current);
+              const matching = next.projects.find(project => project.id === item.id)!;
+              return mergeProjectAnalysis(matching, analysis) ? next : current;
+            });
+            if (analysis.status === "ready") {
+              const agentRun = await requestProjectAgentRun(item, analysis);
+              if (stopped) return;
+              const previouslyReady = currentState.current.projects.find(project => project.id === item.id)?.agentRun;
+              if (agentRun.status === "ready" && (previouslyReady?.signature !== agentRun.signature || previouslyReady?.status !== "ready"))
+                appNotice(`BA Mate has new source, planning and governance suggestions for ${item.name}.`, "info", "Suggestions ready for review");
+              setState(current => {
+                const target = current.projects.find(project => project.id === item.id && project.workspaceId === item.workspaceId);
+                if (!target || JSON.stringify(target.agentRun) === JSON.stringify(agentRun)) return current;
+                const next = structuredClone(current);
+                const updated = next.projects.find(project => project.id === item.id)!;
+                updated.agentRun = agentRun;
+                surfaceBackgroundQuestion(updated, agentRun);
+                return next;
+              });
+            }
+          } catch (error) {
+            if (stopped) return;
+            setState(current => {
+              const target = current.projects.find(project => project.id === item.id && project.workspaceId === item.workspaceId);
+              if (!target || target.sourceAnalysisStatus === "failed") return current;
+              const next = structuredClone(current);
+              next.projects.find(project => project.id === item.id)!.sourceAnalysisStatus = "failed";
+              return next;
+            });
+            if (!folderFailureNotified.current.has(item.id)) {
+              folderFailureNotified.current.add(item.id);
+              appNotice(`${item.name}: ${error instanceof Error ? error.message : "the project folder could not be read"}. Reconnect it in project settings.`, "warning", "Project folder unavailable");
+            }
+          }
+        }
+      } finally { running = false; }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 10000);
+    return () => { stopped = true; window.clearInterval(interval); };
+  }, [ready]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (ready && savedState.current !== currentState.current) { event.preventDefault(); event.returnValue = ""; }
@@ -6494,7 +6470,7 @@ export default function App() {
     );
     switch (section) {
       case "overview":
-        return <ProjectOverview project={project} go={go} />;
+        return <ProjectOverview project={project} go={go} update={update} />;
       case "goals":
         return (
           <GoalsView

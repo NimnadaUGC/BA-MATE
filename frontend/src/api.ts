@@ -9,10 +9,17 @@ async function token() {
   return session;
 }
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return requestWithSession<T>(path, options, false);
+}
+async function requestWithSession<T>(path: string, options: RequestInit, refreshed: boolean): Promise<T> {
   const secret = await token();
   const response = await fetch(`${apiBase}${path}`, {
     ...options, headers: { 'Content-Type': 'application/json', 'X-BA-Session': secret, ...options.headers },
   });
+  if (response.status === 401 && !refreshed) {
+    session = undefined;
+    return requestWithSession<T>(path, options, true);
+  }
   if (!response.ok) {
     if (response.status === 401) session = undefined;
     const body = await response.json().catch(() => ({}));

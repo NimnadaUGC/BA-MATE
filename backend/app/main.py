@@ -1,5 +1,6 @@
 """Local-only research application service. Not a multi-tenant hosted API."""
 import os
+import asyncio
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,7 +14,10 @@ from . import runtime
 from .contracts import RunRequest
 from .evidence import SourceUpload, extract_source
 from .persistence import read_workspace, save_workspace
-from .project_files import ProjectFolderCreate, ProjectFilesWrite, create_project_folder, write_project_files
+from .project_files import ProjectFolderCreate, ProjectFilesWrite, ProjectFoldersCreate, choose_existing_project_folder, create_project_folder, write_project_files, create_project_directories, read_project_file
+from .project_analysis import analysis_snapshot, stop_analysis
+from .setup_assist import SetupAssistRequest, propose_setup
+from .project_agents import AgentStart, start_agents, agent_status, agent_history, background_project_scheduler
 from .workflow import execute
 from .providers import ModelProvider
 from .qualification import qualify_profile, record_human_review
@@ -24,7 +28,16 @@ ORIGINS = {f'http://{host}:{port}' for host in ['localhost', '127.0.0.1'] for po
 @asynccontextmanager
 async def lifespan(app):
     runtime.load_config()
-    yield
+    scheduler = asyncio.create_task(background_project_scheduler())
+    try:
+        yield
+    finally:
+        scheduler.cancel()
+        try:
+            await scheduler
+        except asyncio.CancelledError:
+            pass
+        stop_analysis()
 
 app = FastAPI(title='BA Mate local research service', version='0.4.0', lifespan=lifespan)
 
@@ -103,13 +116,45 @@ def review_qualification(value: QualificationReviewRequest):
 async def source(request: SourceUpload):
     return await run_in_threadpool(extract_source, request)
 
+@app.post('/api/setup/propose')
+async def setup_proposal(request: SetupAssistRequest):
+    return await propose_setup(request)
+
 @app.post('/api/project-folders')
 async def project_folder(request: ProjectFolderCreate):
     return await run_in_threadpool(create_project_folder, request)
 
+@app.post('/api/project-folders/choose')
+async def project_folder_choose():
+    return await run_in_threadpool(choose_existing_project_folder)
+
 @app.post('/api/project-folders/{workspace_id}/files')
 async def project_folder_files(workspace_id: str, request: ProjectFilesWrite):
     return await run_in_threadpool(write_project_files, workspace_id, request)
+
+@app.post('/api/project-folders/{workspace_id}/directories')
+async def project_folder_directories(workspace_id: str, request: ProjectFoldersCreate):
+    return await run_in_threadpool(create_project_directories, workspace_id, request)
+
+@app.get('/api/project-folders/{workspace_id}/file')
+async def project_folder_file(workspace_id: str, relative_path: str):
+    return await run_in_threadpool(read_project_file, workspace_id, relative_path)
+
+@app.get('/api/project-folders/{workspace_id}/analysis')
+async def project_folder_analysis(workspace_id: str):
+    return await run_in_threadpool(analysis_snapshot, workspace_id)
+
+@app.post('/api/project-agents')
+async def project_agents_start(request: AgentStart):
+    return await start_agents(request)
+
+@app.get('/api/project-agents/{workspace_id}')
+async def project_agents_status(workspace_id: str):
+    return agent_status(workspace_id)
+
+@app.get('/api/project-agents/{workspace_id}/history')
+async def project_agents_history(workspace_id: str):
+    return agent_history(workspace_id)
 
 class WorkspaceSave(BaseModel):
     expected_revision: int = Field(ge=0)

@@ -70,6 +70,8 @@ export interface Comment {
 }
 export interface ArtifactProposal {
   id: string;
+  /** Active goal when this action was proposed. */
+  goalId?: string;
   kind:
     | "requirement-revision"
     | "story-revision"
@@ -77,7 +79,12 @@ export interface ArtifactProposal {
     | "register-update"
     | "diagram-revision"
     | "document-section"
-    | "document-sync";
+    | "document-sync"
+    | "clarification-question"
+    | "clarification-answer"
+    | "governance-revision"
+    | "goal-direction"
+    | "source-selection";
   target: string;
   before: string;
   after: string;
@@ -87,6 +94,8 @@ export interface ArtifactProposal {
 }
 
 export interface Source {
+  /** Filesystem fingerprint of the revision last offered for BA review. */
+  analysisSignature?: string;
   content?: string;
   originalBase64?: string;
   relativePath?: string;
@@ -96,7 +105,7 @@ export interface Source {
   extractionLimitations?: string[];
   id: string;
   name: string;
-  type: "PDF" | "DOCX" | "TXT" | "Spreadsheet" | "Image" | "Audio" | "Video" | "Policy";
+  type: "PDF" | "DOCX" | "TXT" | "Spreadsheet" | "Image" | "Audio" | "Video" | "Policy" | "Other";
   status: "Analyzed" | "Needs review" | "Excluded";
   classification: "Project only" | "Confidential" | "Public";
   provenance: string;
@@ -362,6 +371,7 @@ export interface ConversationMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
+  backgroundSuggestionKey?: string;
   references?: ArtifactReference[];
   proposal?: ArtifactProposal;
   contextReceipt?: ModelContextReceipt;
@@ -393,7 +403,9 @@ export interface ProjectGoal {
     | "New discovery"
     | "Improve existing documentation"
     | "Requirements addendum"
-    | "New deliverable";
+    | "New deliverable"
+    | "Stakeholder clarification"
+    | "Policy & governance review";
   status: "Active" | "Planned" | "Completed";
   description: string;
   createdAt: string;
@@ -402,6 +414,8 @@ export interface ProjectGoal {
   conversationId?: string;
   parentGoalId?: string;
   sourceIds: string[];
+  /** Source hashes the BA selected for this goal; a changed hash needs a new selection. */
+  sourceRevisionPins?: Record<string, string>;
   deliverables: string[];
 }
 export interface Member {
@@ -467,6 +481,32 @@ export interface StageFeedback {
 }
 
 export interface Project {
+  dismissedAgentSuggestions?: string[];
+  /** Original proposals retained when a project backup is restored or its folder is reconnected. */
+  agentHistory?: NonNullable<Project["agentRun"]>[];
+  agentRun?: {
+    signature?: string;
+    status: "not_started" | "waiting_for_sources" | "local_model_required" | "running" | "ready" | "failed";
+    error?: string;
+    message?: string;
+    roles: Record<string, { status: string; proposal?: Record<string, unknown> }>;
+    context_manifest?: {
+      created_at: string;
+      processing_location: string;
+      model: string;
+      active_goal?: Record<string, unknown>;
+      confirmed_decision_count: number;
+      omitted_confirmed_decision_count?: number;
+      omitted_approved_source_selection_count?: number;
+      unmatched_selected_source_count?: number;
+      source_intake: { sources: { path: string; sha256?: string; available_characters: number; sent_characters: number }[]; omitted_count: number };
+      requirement_drafting: { sources: { path: string; sha256?: string; available_characters: number; sent_characters: number }[]; omitted_count: number };
+      note: string;
+    };
+    requires_human_acceptance: boolean;
+  };
+  /** Latest local folder discovery state; never itself grants source approval. */
+  sourceAnalysisStatus?: "scanning" | "ready" | "failed";
   cloudAllowed?: boolean;
   aiRuns?: import("./workflow").SavedRun[];
   id: string;
@@ -483,6 +523,7 @@ export interface Project {
   workspaceId?: string;
   workspaceKind?: "managed" | "selected" | "browser";
   workspacePath?: string;
+  workspaceFolders?: string[];
   template: string;
   governancePacks: string[];
   sources: Source[];

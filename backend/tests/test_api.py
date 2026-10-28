@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
@@ -87,18 +88,67 @@ class RealWorkflowTests(unittest.TestCase):
         workspace_id = create.json()['workspace_id']
         write = self.client.post(f'/api/project-folders/{workspace_id}/files', json={'files': [{'name': 'notes.csv', 'relative_path': 'workshops/notes.csv', 'data': base64.b64encode(b'a,b\n1,2').decode()}]})
         self.assertEqual(write.status_code, 200, write.text)
-        self.assertEqual((selected / 'sources' / 'workshops' / 'notes.csv').read_bytes(), b'a,b\n1,2')
+        self.assertEqual((selected / 'workshops' / 'notes.csv').read_bytes(), b'a,b\n1,2')
         duplicate = self.client.post(f'/api/project-folders/{workspace_id}/files', json={'files': [{'name': 'notes.csv', 'relative_path': 'workshops/notes.csv', 'data': base64.b64encode(b'different').decode()}]})
         self.assertEqual(duplicate.status_code, 200, duplicate.text)
-        self.assertEqual((selected / 'sources' / 'workshops' / 'notes (1).csv').read_bytes(), b'different')
+        self.assertEqual((selected / 'workshops' / 'notes (1).csv').read_bytes(), b'different')
 
     def test_project_folder_blocks_relative_path_escape(self):
         create = self.client.post('/api/project-folders', json={'project_id': 'project-A', 'project_name': 'Example'})
         workspace_id = create.json()['workspace_id']
         write = self.client.post(f'/api/project-folders/{workspace_id}/files', json={'files': [{'name': 'safe.txt', 'relative_path': '../../safe.txt', 'data': base64.b64encode(b'safe').decode()}]})
-        self.assertEqual(write.status_code, 200, write.text)
+        self.assertEqual(write.status_code, 422, write.text)
         managed = Path(self.temp.name) / 'projects'
-        self.assertEqual(list(managed.rglob('safe.txt'))[0].parent.name, 'sources')
+        self.assertEqual(list(managed.rglob('safe.txt')), [])
+
+    def test_existing_folder_sources_can_be_opened_without_copying(self):
+        selected = Path(self.temp.name) / 'existing-project'
+        (selected / 'Interviews').mkdir(parents=True)
+        (selected / 'Interviews' / 'notes.txt').write_text('A stakeholder answer remains open.')
+        create = self.client.post('/api/project-folders', json={'project_id': 'project-A', 'project_name': 'Example', 'selected_path': str(selected)})
+        workspace_id = create.json()['workspace_id']
+        original = self.client.get(f'/api/project-folders/{workspace_id}/file', params={'relative_path': 'Interviews/notes.txt'})
+        self.assertEqual(original.status_code, 200)
+        self.assertEqual(base64.b64decode(original.json()['data']), b'A stakeholder answer remains open.')
+        escaped = self.client.get(f'/api/project-folders/{workspace_id}/file', params={'relative_path': '../outside.txt'})
+        self.assertEqual(escaped.status_code, 422)
+        folders = self.client.post(f'/api/project-folders/{workspace_id}/directories', json={'folders': ['New material/Workshops']})
+        self.assertEqual(folders.status_code, 200)
+        self.assertTrue((selected / 'New material' / 'Workshops').is_dir())
+
+    def test_browser_can_choose_an_existing_folder_through_local_macos_dialog(self):
+        selected = Path(self.temp.name) / 'Existing folder'
+        selected.mkdir()
+        completed = CompletedProcess(args=['osascript'], returncode=0, stdout=f'{selected}/\n', stderr='')
+        with patch('app.project_files.sys.platform', 'darwin'), patch('app.project_files.subprocess.run', return_value=completed) as dialog:
+            response = self.client.post('/api/project-folders/choose')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {'name': selected.name, 'path': str(selected.resolve())})
+        self.assertEqual(dialog.call_args.kwargs['timeout'], 180)
+        self.assertFalse((selected / 'Uploaded Sources').exists())  # Choosing alone never modifies the folder.
+
+    def test_canceling_local_folder_dialog_keeps_project_setup_open(self):
+        canceled = CompletedProcess(args=['osascript'], returncode=1, stdout='', stderr='User canceled. (-128)')
+        with patch('app.project_files.sys.platform', 'darwin'), patch('app.project_files.subprocess.run', return_value=canceled):
+            response = self.client.post('/api/project-folders/choose')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json())
+
+    def test_project_folder_rejects_symlinked_originals(self):
+        selected = Path(self.temp.name) / 'linked-project'
+        selected.mkdir()
+        outside = Path(self.temp.name) / 'private.txt'
+        outside.write_text('Private material outside this project.')
+        (selected / 'linked.txt').symlink_to(outside)
+        create = self.client.post('/api/project-folders', json={'project_id': 'project-A', 'project_name': 'Example', 'selected_path': str(selected)})
+        workspace_id = create.json()['workspace_id']
+        opened = self.client.get(f'/api/project-folders/{workspace_id}/file', params={'relative_path': 'linked.txt'})
+        self.assertEqual(opened.status_code, 404)
+        written = self.client.post(f'/api/project-folders/{workspace_id}/files', json={'files': [{
+            'name': 'linked.txt', 'relative_path': 'linked.txt', 'data': base64.b64encode(b'new').decode(),
+        }]})
+        self.assertEqual(written.status_code, 422)
+        self.assertEqual(outside.read_text(), 'Private material outside this project.')
 
     def test_workspace_conflicts_do_not_overwrite_saved_work(self):
         first = {'schemaVersion': 6, 'projects': [{'id': 'A', 'name': 'Actual project'}]}
@@ -158,6 +208,19 @@ class RealWorkflowTests(unittest.TestCase):
         with patch('app.workflow.ModelProvider.complete', AsyncMock(return_value={'text': 'not JSON', 'model': 'test', 'provider': 'ollama', 'usage': {}})):
             response = self.client.post('/api/v1/workflow/run', json=self.request)
         self.assertEqual(response.status_code, 502)
+
+    def test_chat_change_is_returned_as_a_reviewable_action_only(self):
+        request = {**self.request, 'task': 'conversation-action', 'prompt': 'Please revise FR-1 to say the manager reviews refunds.',
+                   'context': [{'id': 'FR-1', 'type': 'Requirement', 'content': 'Customers request refunds.', 'version': 1, 'provenance': 'Working requirement', 'priority': 10}]}
+        action = {'message': 'I can propose that wording for review.', 'action_kind': 'requirement-revision',
+                  'target_id': 'FR-1', 'before': 'Customers request refunds.', 'after': 'Managers review customer refund requests.',
+                  'rationale': 'The BA asked to add the review actor.', 'reference_ids': ['FR-1']}
+        fake = AsyncMock(return_value={'text': json.dumps(action), 'model': 'test', 'provider': 'ollama', 'usage': {}})
+        with patch('app.workflow.ModelProvider.complete', fake):
+            response = self.client.post('/api/v1/workflow/run', json=request)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()['result']['requires_human_acceptance'])
+        self.assertEqual(response.json()['result']['proposal']['action_kind'], 'requirement-revision')
 
     def test_cloud_processing_requires_project_preference(self):
         runtime.config = runtime.ProviderConfig(provider='openrouter', model='test')

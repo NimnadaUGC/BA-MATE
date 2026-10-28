@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -32,6 +34,36 @@ class ProjectFile(BaseModel):
 
 class ProjectFilesWrite(BaseModel):
     files: list[ProjectFile] = Field(max_length=1000)
+
+
+class ProjectFoldersCreate(BaseModel):
+    folders: list[str] = Field(max_length=100)
+
+
+def choose_existing_project_folder() -> dict | None:
+    """Open the host's folder dialog for browsers without directory handles."""
+    if sys.platform != 'darwin':
+        raise HTTPException(501, 'Direct folder selection is unavailable on this system. Use the desktop app or a browser with folder access.')
+    try:
+        result = subprocess.run(
+            ['/usr/bin/osascript', '-e', 'POSIX path of (choose folder with prompt "Choose an existing BA Mate project folder")'],
+            capture_output=True, text=True, timeout=180, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(503, 'The macOS folder picker could not open. Try again or use the desktop app.') from exc
+    if result.returncode:
+        if '(-128)' in result.stderr or 'User canceled' in result.stderr:
+            return None
+        raise HTTPException(503, 'The macOS folder picker could not complete. Try again or use the desktop app.')
+    if not result.stdout.strip():
+        raise HTTPException(503, 'The macOS folder picker did not return a folder.')
+    try:
+        selected = Path(result.stdout.strip()).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise HTTPException(422, 'The selected folder is no longer available.') from exc
+    if not selected.is_dir():
+        raise HTTPException(422, 'Choose a folder rather than a file.')
+    return {'name': selected.name, 'path': str(selected)}
 
 
 def _registry_path() -> Path:
@@ -93,10 +125,10 @@ def create_project_folder(request: ProjectFolderCreate) -> dict:
             raise HTTPException(422, 'BA Mate could not create the managed project folder.') from exc
         kind = 'managed'
     try:
-        sources = root / 'sources'
-        if sources.is_symlink():
-            raise HTTPException(422, 'The sources location cannot be a symbolic link.')
-        sources.mkdir(exist_ok=True)
+        uploads = root / 'Uploaded Sources'
+        if uploads.is_symlink():
+            raise HTTPException(422, 'The uploaded sources location cannot be a symbolic link.')
+        uploads.mkdir(exist_ok=True)
         probe = root / '.ba-mate-write-test'
         probe.write_bytes(b'')
         probe.unlink()
@@ -111,6 +143,8 @@ def create_project_folder(request: ProjectFolderCreate) -> dict:
 
 def _safe_relative_path(file: ProjectFile) -> Path:
     raw = (file.relative_path or file.name).replace('\\', '/')
+    if raw.startswith('/') or any(part in {'.', '..'} for part in raw.split('/')):
+        raise HTTPException(422, 'A source path must stay inside the project folder.')
     parts = []
     for part in raw.split('/'):
         if not part or part in {'.', '..'}:
@@ -125,7 +159,14 @@ def _safe_relative_path(file: ProjectFile) -> Path:
 
 def _collision_safe_destination(root: Path, relative: Path, data: bytes) -> Path:
     destination = root / relative
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    parent = root
+    for part in relative.parts[:-1]:
+        parent = parent / part
+        if parent.is_symlink() or not parent.parent.resolve().is_relative_to(root.resolve()):
+            raise HTTPException(422, 'A source folder would leave the connected project folder.')
+        parent.mkdir(exist_ok=True)
+    if destination.is_symlink():
+        raise HTTPException(422, 'A source file cannot be written through a symbolic link.')
     if not destination.exists():
         return destination
     try:
@@ -148,10 +189,10 @@ def write_project_files(workspace_id: str, request: ProjectFilesWrite) -> dict:
     root = Path(record['path']).resolve()
     if not root.is_dir():
         raise HTTPException(404, 'The connected project folder is unavailable. Choose it again.')
-    sources = (root / 'sources').resolve()
-    if not sources.is_relative_to(root):
-        raise HTTPException(422, 'The sources location leaves the connected project folder.')
-    sources.mkdir(exist_ok=True)
+    uploads = (root / 'Uploaded Sources').resolve()
+    if not uploads.is_relative_to(root):
+        raise HTTPException(422, 'The uploaded sources location leaves the connected project folder.')
+    uploads.mkdir(exist_ok=True)
     decoded: list[tuple[ProjectFile, bytes]] = []
     total = 0
     for item in request.files:
@@ -168,8 +209,8 @@ def write_project_files(workspace_id: str, request: ProjectFilesWrite) -> dict:
     written = []
     for item, data in decoded:
         relative = _safe_relative_path(item)
-        destination = _collision_safe_destination(sources, relative, data).resolve()
-        if not destination.is_relative_to(sources):
+        destination = _collision_safe_destination(root, relative if item.relative_path else Path('Uploaded Sources') / relative, data).resolve()
+        if not destination.is_relative_to(root):
             raise HTTPException(422, 'A source path would leave the project folder.')
         temporary = destination.with_name(f'.{destination.name}.{uuid.uuid4().hex}.tmp')
         try:
@@ -181,3 +222,45 @@ def write_project_files(workspace_id: str, request: ProjectFilesWrite) -> dict:
             raise HTTPException(422, f'Could not copy {item.name} into the project folder.') from exc
         written.append(str(destination.relative_to(root)))
     return {'written': written, 'folder_name': root.name, 'kind': record['kind']}
+
+
+def create_project_directories(workspace_id: str, request: ProjectFoldersCreate) -> dict:
+    record = _read_registry().get(workspace_id)
+    if not record:
+        raise HTTPException(404, 'This project folder is no longer connected.')
+    root = Path(record['path']).resolve()
+    if not root.is_dir():
+        raise HTTPException(404, 'The connected project folder is unavailable.')
+    created = []
+    for name in request.folders:
+        if not name.strip() or any(part in {'', '.', '..'} for part in name.replace('\\', '/').split('/')):
+            raise HTTPException(422, 'A folder path is invalid.')
+        relative = _safe_relative_path(ProjectFile(name='folder', relative_path=name, data='x'))
+        destination = root
+        for part in relative.parts:
+            destination = destination / part
+            if destination.is_symlink() or not destination.parent.resolve().is_relative_to(root):
+                raise HTTPException(422, 'A folder path would leave the project folder.')
+            destination.mkdir(exist_ok=True)
+        created.append(relative.as_posix())
+    return {'created': created}
+
+
+def read_project_file(workspace_id: str, relative_path: str) -> dict:
+    record = _read_registry().get(workspace_id)
+    if not record:
+        raise HTTPException(404, 'This project folder is no longer connected.')
+    root = Path(record['path']).resolve()
+    relative = _safe_relative_path(ProjectFile(name='source', relative_path=relative_path, data='x'))
+    path = root / relative
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise HTTPException(404, 'The original source is unavailable in the project folder.')
+    path = path.resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(404, 'The original source is unavailable in the project folder.')
+    if not 0 < path.stat().st_size <= MAX_FILE_BYTES:
+        raise HTTPException(422, 'This file cannot be opened in BA Mate because it exceeds 25 MB or is empty.')
+    return {'name': path.name, 'data': base64.b64encode(path.read_bytes()).decode('ascii')}

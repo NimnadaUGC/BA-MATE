@@ -6,7 +6,7 @@ import re
 from pydantic import ValidationError
 from fastapi import HTTPException
 from . import runtime
-from .contracts import RunRequest, WorkflowOutput
+from .contracts import RunRequest, WorkflowOutput, ChatActionOutput
 from .providers import ModelProvider
 from .persistence import record
 
@@ -114,12 +114,35 @@ async def execute(req: RunRequest):
         raise HTTPException(409, 'This project is restricted to local processing. Allow external processing in the project workbench for non-confidential material, or select local Ollama.')
     if req.task != 'conversation' and not req.context:
         raise HTTPException(422, 'Add and review source evidence or a project brief before generating artifacts.')
-    schema = None if req.task == 'conversation' else schema_for_provider(req.task)
+    schema = None if req.task == 'conversation' else ChatActionOutput.model_json_schema() if req.task == 'conversation-action' else schema_for_provider(req.task)
+    if req.task == 'conversation-action':
+        schema['additionalProperties'] = False
+        req.prompt = (req.prompt + '\nRespond to the user. If they explicitly request a project change, optionally propose ONE precise reviewable action. '
+                      'Use action_kind none for ordinary questions or unclear requests. Do not apply anything. '
+                      'For a requirement revision, target_id must identify a supplied requirement and before must reproduce its current statement exactly. '
+                      'For a clarification question, after is the proposed question. For a clarification answer, propose one only when the user explicitly supplies the answer; target_id is the clarification ID, before is its currently recorded answer or empty, and after is the supplied answer. It still needs human confirmation of authority. '
+                      'For a goal direction, target_id is the supplied goal ID, before its current description, and after the new direction. '
+                      'For source selection, target_id is a supplied reviewed source ID and after is exactly include or exclude. '
+                      'For a governance revision, before is an existing policy name or empty for an addition; after is its replacement or empty for removal. '
+                      'Never modify core human-approval or provenance safeguards. Cite only supplied reference_ids.')
     messages, receipt = prepare_messages(req, cfg, schema)
     started = time.monotonic()
     async with INFERENCE_SLOT:
         output = await ModelProvider(cfg).complete(messages, schema)
-    result = None if req.task == 'conversation' else validate_output(output['text'], receipt['included_reference_ids'], req.task)
+    if req.task == 'conversation-action':
+        try:
+            action = ChatActionOutput.model_validate_json(output['text'])
+        except ValidationError as exc:
+            raise HTTPException(502, 'BA Mate did not return a valid chat action proposal. No changes were applied.') from exc
+        if set(action.reference_ids) - set(receipt['included_reference_ids']):
+            raise HTTPException(502, 'The chat proposal cited context that was not supplied. No changes were applied.')
+        if action.action_kind in {'requirement-revision', 'clarification-answer', 'goal-direction', 'source-selection'} and action.target_id not in receipt['included_reference_ids']:
+            raise HTTPException(502, 'The proposed target was not in the supplied context. No changes were applied.')
+        if action.action_kind == 'source-selection' and action.after not in {'include', 'exclude'}:
+            raise HTTPException(502, 'BA Mate proposed an invalid source selection. No changes were applied.')
+        result = action.model_dump()
+    else:
+        result = None if req.task == 'conversation' else validate_output(output['text'], receipt['included_reference_ids'], req.task)
     verification_warnings = []
     if result is not None and req.task == 'requirements':
         draft_text = json.dumps([result['requirements'], result['stories']]).lower()
@@ -140,5 +163,5 @@ async def execute(req: RunRequest):
                 'usage': output['usage'], 'temperature': cfg.temperature, 'context_tokens': cfg.context_tokens,
                 'output_tokens': cfg.output_tokens, 'retries': 0, 'context_hash': receipt['context_hash']}
     record('model_run', metadata)
-    return {'metadata': metadata, 'result': {'text': output['text'] if result is None else result['summary'], 'proposal': result,
+    return {'metadata': metadata, 'result': {'text': output['text'] if result is None else result['message'] if req.task == 'conversation-action' else result['summary'], 'proposal': result,
             'context_receipt': receipt, 'verification_warnings': verification_warnings, 'requires_human_acceptance': True}}

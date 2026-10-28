@@ -18,7 +18,7 @@ class RunRequest(BaseModel):
     request_id: str = Field(min_length=1, max_length=100)
     project_id: str = Field(min_length=1, max_length=100)
     goal_id: str | None = None
-    task: Literal['clarify', 'requirements', 'validate', 'diagram', 'document', 'impact', 'conversation']
+    task: Literal['clarify', 'requirements', 'validate', 'diagram', 'document', 'impact', 'conversation', 'conversation-action']
     prompt: str = Field(min_length=1, max_length=12000)
     context: list[Evidence] = Field(default_factory=list, max_length=100)
     history: list[HistoryMessage] = Field(default_factory=list, max_length=30)
@@ -75,3 +75,15 @@ class WorkflowOutput(BaseModel):
     diagrams: list[DiagramDraft]
     sections: list[SectionDraft]
     limitations: list[str]
+
+
+class ChatActionOutput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    message: str = Field(min_length=1, max_length=12000)
+    action_kind: Literal['none', 'requirement-revision', 'clarification-question', 'clarification-answer',
+                         'governance-revision', 'goal-direction', 'source-selection']
+    target_id: str = Field(max_length=120)
+    before: str = Field(max_length=12000)
+    after: str = Field(max_length=12000)
+    rationale: str = Field(max_length=2000)
+    reference_ids: list[str] = Field(max_length=20)

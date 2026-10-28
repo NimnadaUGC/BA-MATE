@@ -7,12 +7,15 @@ export interface ModelContextItem {
   priority: number; estimatedTokens: number; confidential?: boolean;
 }
 export interface ModelRequest {
-  requestId: string; task: 'project-conversation' | 'assistant-inspection'; prompt: string;
+  requestId: string; task: 'project-conversation' | 'assistant-inspection' | 'conversation-action'; prompt: string;
   projectId: string; goalId?: string; context: ModelContextItem[]; governance: string[];
   receipt: ModelContextReceipt; history?: { role: 'user' | 'assistant'; content: string }[];
   cloudAllowed?: boolean; signal?: AbortSignal;
 }
-export interface ModelResponse { text: string; receipt: ModelContextReceipt; provider: string }
+export interface ModelResponse { text: string; receipt: ModelContextReceipt; provider: string; actionProposal?: {
+  action_kind: 'none' | 'requirement-revision' | 'clarification-question' | 'clarification-answer' | 'governance-revision' | 'goal-direction' | 'source-selection';
+  target_id: string; before: string; after: string; rationale: string; reference_ids: string[];
+} }
 const estimateTokens = (text: string) => Math.ceil(text.length / 3);
 
 /** Returns only reviewed, goal-scoped evidence. An empty goal source list means no source is selected. */
@@ -36,10 +39,12 @@ export function projectEvidence(project: Project, references: ArtifactReference[
   };
   // The brief is BA-authored project context, not a substitute for a selected source.
   add('PROJECT-BRIEF', 'Brief', `${project.description}\nGoal: ${goal?.title ?? 'No active goal'}\n${goal?.description ?? ''}`, revisionOf(project, 'PROJECT-BRIEF'), false, 'BA-authored project brief', 90);
+  if (goal) add(goal.id, 'Goal', `${goal.title}\nKind: ${goal.kind}\nDescription: ${goal.description}\nStatus: ${goal.status}`, 1, false, 'Active BA goal', 89);
+  add('PROJECT-GOVERNANCE', 'Governance', project.governancePacks.join('\n'), 1, false, 'Project policy list; human review remains required', 88);
   for (const source of project.sources) if (source.approved && source.status !== 'Excluded' && sourceInScope(source.id)) {
     add(source.id, 'Source', sourceText(source), revisionOf(project, source.id), source.classification === 'Confidential', `${source.name} (reviewed source)`, 70);
   }
-  for (const item of project.clarifications) if (scoped(item) && (item.status === 'Answered' || selectedSources.has(item.sourceId) || explicit.has(item.id))) {
+  for (const item of project.clarifications) if (scoped(item) && (item.status === 'Answered' || item.sourceId === 'PROJECT-BRIEF' || selectedSources.has(item.sourceId) || explicit.has(item.id))) {
     add(item.id, 'Clarification', `${item.question}\nStatus: ${item.status}\nAnswer: ${item.answer ?? 'Unanswered'}\nSource: ${item.sourceId}`, revisionOf(project, item.id), false, `Clarification linked to ${item.sourceId}`, 85);
   }
   for (const item of project.requirements) if (scoped(item) || explicit.has(item.id)) {
@@ -69,9 +74,9 @@ export interface ModelProvider { id: string; generate(request: ModelRequest): Pr
 export class ApiModelProvider implements ModelProvider {
   id = 'configured-provider';
   async generate(request: ModelRequest): Promise<ModelResponse> {
-    const payload = await api<{ metadata: { provider: string }; result: { text: string; context_receipt: { estimated_tokens: number; included_reference_ids: string[]; omitted_reference_ids: string[]; partial_reference_ids: string[]; governance_included: boolean; token_budget: number } } }>('/api/v1/workflow/run', { method: 'POST', signal: request.signal, body: JSON.stringify({ request_id: request.requestId, project_id: request.projectId, goal_id: request.goalId, task: 'conversation', prompt: request.prompt, context: request.context, history: request.history ?? [], cloud_allowed: request.cloudAllowed }) });
+    const payload = await api<{ metadata: { provider: string }; result: { text: string; proposal?: ModelResponse['actionProposal']; context_receipt: { estimated_tokens: number; included_reference_ids: string[]; omitted_reference_ids: string[]; partial_reference_ids: string[]; governance_included: boolean; token_budget: number } } }>('/api/v1/workflow/run', { method: 'POST', signal: request.signal, body: JSON.stringify({ request_id: request.requestId, project_id: request.projectId, goal_id: request.goalId, task: request.task === 'conversation-action' ? 'conversation-action' : 'conversation', prompt: request.prompt, context: request.context, history: request.history ?? [], cloud_allowed: request.cloudAllowed }) });
     const receipt = payload.result.context_receipt;
-    return { provider: payload.metadata.provider, text: payload.result.text, receipt: { ...request.receipt, requestId: request.requestId, provider: payload.metadata.provider, estimatedTokens: receipt.estimated_tokens, tokenBudget: receipt.token_budget, includedReferenceIds: receipt.included_reference_ids, omittedReferenceIds: receipt.omitted_reference_ids, partialReferenceIds: receipt.partial_reference_ids, governanceIncluded: receipt.governance_included } };
+    return { provider: payload.metadata.provider, text: payload.result.text, actionProposal: payload.result.proposal, receipt: { ...request.receipt, requestId: request.requestId, provider: payload.metadata.provider, estimatedTokens: receipt.estimated_tokens, tokenBudget: receipt.token_budget, includedReferenceIds: receipt.included_reference_ids, omittedReferenceIds: receipt.omitted_reference_ids, partialReferenceIds: receipt.partial_reference_ids, governanceIncluded: receipt.governance_included } };
   }
 }
 export const configuredModelProvider = new ApiModelProvider();
