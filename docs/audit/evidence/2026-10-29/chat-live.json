@@ -1,0 +1,45 @@
+{
+  "id": "M-mvt2md4f-ajc",
+  "role": "assistant",
+  "text": "From SRC-01 only, the low-stock threshold of 5 units is an example, not a confirmed value. REQ-INV-02 states the system should flag low-stock items when inventory falls below a predefined threshold '(e.g., less than 5 units).' Clarification CQ-2a5d214d confirms the threshold remains unanswered.",
+  "references": [
+    {
+      "id": "SRC-01",
+      "type": "Source",
+      "label": "Business Requirements Document (BRD).pdf",
+      "route": "sources"
+    }
+  ],
+  "contextReceipt": {
+    "requestId": "ce04b476-4f03-4625-b87e-bb4b05efb494",
+    "provider": "openrouter",
+    "strategy": "priority-budget-compaction",
+    "generatedAt": "2026-10-29T04:56:18.063Z",
+    "tokenBudget": 1000000,
+    "estimatedTokens": 6478,
+    "includedReferenceIds": [
+      "SRC-01",
+      "PROJECT-BRIEF",
+      "GOAL-mvswqphp-jlka",
+      "PROJECT-GOVERNANCE",
+      "CQ-2a5d214d",
+      "CQ-7ef54df0",
+      "CQ-f3c0abe4",
+      "CQ-fa4eb94d",
+      "CHK-9d6ddee6",
+      "CHK-f74e691f",
+      "FR-179bca6f",
+      "FR-e351cb27",
+      "US-7c18dcd2",
+      "US-935fd802",
+      "ASM-3b0a24ef",
+      "ASM-a11f62b2"
+    ],
+    "omittedReferenceIds": [],
+    "governanceIncluded": true,
+    "countingMethod": "reference tokenizer estimate (+20%); provider count may differ",
+    "outputReservation": 32768,
+    "historyMessagesOmitted": 0,
+    "partialReferenceIds": []
+  }
+}

@@ -1,0 +1,108 @@
+[
+  {
+    "route": "overview",
+    "heading": [
+      "Synthetic audit fixture"
+    ],
+    "error": []
+  },
+  {
+    "route": "goals",
+    "heading": [
+      "Goals"
+    ],
+    "error": []
+  },
+  {
+    "route": "workflow",
+    "heading": [
+      "Primary project delivery"
+    ],
+    "error": []
+  },
+  {
+    "route": "conversations",
+    "heading": [
+      "Conversations"
+    ],
+    "error": []
+  },
+  {
+    "route": "sources",
+    "heading": [
+      "Sources & context"
+    ],
+    "error": []
+  },
+  {
+    "route": "artifacts",
+    "heading": [
+      "Requirements & stories"
+    ],
+    "error": []
+  },
+  {
+    "route": "registers",
+    "heading": [
+      "Registers"
+    ],
+    "error": []
+  },
+  {
+    "route": "traceability",
+    "heading": [
+      "Traceability"
+    ],
+    "error": []
+  },
+  {
+    "route": "diagrams",
+    "heading": [
+      "Diagram studio"
+    ],
+    "error": []
+  },
+  {
+    "route": "documents",
+    "heading": [
+      "Document studio",
+      "Mobile lending SRS"
+    ],
+    "error": []
+  },
+  {
+    "route": "changes",
+    "heading": [
+      "Changes & impact"
+    ],
+    "error": []
+  },
+  {
+    "route": "governance",
+    "heading": [
+      "Governance & checks"
+    ],
+    "error": []
+  },
+  {
+    "route": "activity",
+    "heading": [
+      "Activity & baselines"
+    ],
+    "error": []
+  },
+  {
+    "route": "evaluation",
+    "heading": [
+      "Stage evaluation"
+    ],
+    "error": []
+  },
+  {
+    "route": "team",
+    "heading": [
+      "Team & project settings"
+    ],
+    "error": []
+  }
+]

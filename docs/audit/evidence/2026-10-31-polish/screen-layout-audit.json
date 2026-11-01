@@ -1,0 +1,506 @@
+[
+  {
+    "route": "overview",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Overview · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "workflow",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Guided workflow · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "sources",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Sources · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "artifacts",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Requirements & stories · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "registers",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Registers · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "diagrams",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Diagrams · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "documents",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Documents · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "traceability",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Evidence links · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "changes",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Changes & impact · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "governance",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Checks & safeguards · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "activity",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "History & approved versions · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "goals",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Goals · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "conversations",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Ask BA Mate · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "team",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Project settings · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "evaluation",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Stage evaluation · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "overview",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Overview · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "workflow",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Guided workflow · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "sources",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Sources · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "artifacts",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Requirements & stories · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "registers",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Registers · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "diagrams",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Diagrams · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "documents",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Documents · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "traceability",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Evidence links · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "changes",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Changes & impact · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "governance",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Checks & safeguards · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "activity",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "History & approved versions · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "goals",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Goals · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "conversations",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Ask BA Mate · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "team",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Project settings · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "evaluation",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Stage evaluation · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "overview",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Overview · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "workflow",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Guided workflow · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "sources",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Sources · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "artifacts",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Requirements & stories · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "registers",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Registers · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "diagrams",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Diagrams · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "documents",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Documents · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "traceability",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Evidence links · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "changes",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Changes & impact · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "governance",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Checks & safeguards · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "activity",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "History & approved versions · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "goals",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Goals · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "conversations",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Ask BA Mate · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "team",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Project settings · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "evaluation",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Stage evaluation · UI POLISH — Synthetic populated project · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "projects",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Projects · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "recent",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Recent work · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "templates",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Templates · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "guide",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Beta guide · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "research",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Study participation · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "settings",
+    "width": 500,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Settings · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "projects",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Projects · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "recent",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Recent work · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "templates",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Templates · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "guide",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Beta guide · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "research",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Study participation · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "settings",
+    "width": 900,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Settings · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "projects",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Projects · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "recent",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Recent work · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "templates",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Templates · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "guide",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Beta guide · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "research",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Study participation · BA Mate",
+    "unnamedFields": 0
+  },
+  {
+    "route": "settings",
+    "width": 1280,
+    "contentOverflow": [],
+    "pageOverflow": [],
+    "title": "Settings · BA Mate",
+    "unnamedFields": 0
+  }
+]

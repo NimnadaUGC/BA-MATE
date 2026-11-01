@@ -1,0 +1,194 @@
+{
+  "global": [
+    {
+      "route": "/recent",
+      "title": "Recent work · BA Mate",
+      "headings": [
+        "Recent work",
+        "Workspace activity",
+        "Continue projects"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "/templates",
+      "title": "Templates · BA Mate",
+      "headings": [
+        "Templates",
+        "Retail banking discovery",
+        "People operations workflow",
+        "Controlled product change"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "/guide",
+      "title": "Beta guide · BA Mate",
+      "headings": [
+        "Beta guide",
+        "1. Start with one goal",
+        "2. Review sources",
+        "3. Review every proposal",
+        "4. Approve in order",
+        "5. Give study feedback",
+        "If something fails"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "/research",
+      "title": "Study participation · BA Mate",
+      "headings": [
+        "Study participation is not connected"
+      ],
+      "alerts": []
+    }
+  ],
+  "project": [
+    {
+      "route": "overview",
+      "title": "Overview · APNK POS · BA Mate",
+      "headings": [
+        "APNK POS",
+        "Initial project discovery",
+        "Review readiness",
+        "Initial project discovery workflow",
+        "Project goals",
+        "Recent changes",
+        "Sources & context",
+        "Artifacts"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "workflow",
+      "title": "Guided workflow · APNK POS · BA Mate",
+      "headings": [
+        "Initial project discovery",
+        "Setup completion checklist",
+        "Work with BA Mate",
+        "Initial project discovery workflow",
+        "Clarification queue",
+        "Which Sri Lankan data protection or privacy regulations apply to customer and business data processed by the APNK Mini POS?",
+        "What local tax rates and financial compliance obligations (e.g., VAT, fiscalization, record retention) must the POS satisfy before go-live?",
+        "What is the confirmed predefined low-stock inventory threshold for alerts (SRC-01 cites 'less than 5 units' only as an example)?",
+        "What are the required backup frequency, recovery point objective (RPO), recovery time objective (RTO), and storage location for transaction and inventory data?",
+        "What specific human oversight or dual-verification controls are required for transaction processing, inventory adjustments, and system configuration changes (e.g., manager approval, dual sign-off)?",
+        "What should the system display or do when a cashier enters an unrecognized barcode or SKU manually?",
+        "What should the system do when cash tendered is less than the final total?",
+        "What is the local currency and rounding rule for cash change calculation in Sri Lanka?",
+        "Goal readiness"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "goals",
+      "title": "Goals · APNK POS · BA Mate",
+      "headings": [
+        "Goals"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "sources",
+      "title": "Sources · APNK POS · BA Mate",
+      "headings": [
+        "Sources & context",
+        "1 project source",
+        "Business Requirements Document (BRD).pdf",
+        "Extracted source text",
+        "Source notes"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "artifacts",
+      "title": "Requirements & stories · APNK POS · BA Mate",
+      "headings": [
+        "Requirements & stories"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "registers",
+      "title": "Registers · APNK POS · BA Mate",
+      "headings": [
+        "Registers",
+        "No stakeholder items"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "traceability",
+      "title": "Evidence links · APNK POS · BA Mate",
+      "headings": [
+        "Traceability",
+        "Traceability matrix",
+        "Dependency map"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "diagrams",
+      "title": "Diagrams · APNK POS · BA Mate",
+      "headings": [
+        "Diagram studio",
+        "Project diagrams",
+        "Structured node editor"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "documents",
+      "title": "Documents · APNK POS · BA Mate",
+      "headings": [
+        "Document studio",
+        "Project documents",
+        "Reviewed requirements draft"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "changes",
+      "title": "Changes & impact · APNK POS · BA Mate",
+      "headings": [
+        "Changes & impact",
+        "No change requests"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "governance",
+      "title": "Checks & safeguards · APNK POS · BA Mate",
+      "headings": [
+        "Governance & checks",
+        "Active governance layers",
+        "Cash change calculation lacks insufficient-tender and currency/rounding rules",
+        "Product lookup does not define handling for unrecognized barcode or SKU"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "activity",
+      "title": "History & approved versions · APNK POS · BA Mate",
+      "headings": [
+        "Activity & baselines",
+        "Versions and baselines",
+        "Audit trail"
+      ],
+      "alerts": []
+    },
+    {
+      "route": "team",
+      "title": "Project settings · APNK POS · BA Mate",
+      "headings": [
+        "Team & project settings",
+        "Project setup",
+        "Governance & policy setup",
+        "Project members",
+        "Local workspace"
+      ],
+      "alerts": []
+    }
+  ]
+}

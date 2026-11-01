@@ -1,0 +1,52 @@
+{
+  "projects": {},
+  "audit": [
+    {
+      "event": "analysis_created",
+      "at": "2026-08-04T06:38:43.285935+00:00",
+      "project_id": "loan",
+      "provider": "mock-qwen3-8b",
+      "score": 78
+    },
+    {
+      "event": "model_completion_created",
+      "at": "2026-08-17T07:23:19.330861+00:00",
+      "request_id": "REQ-001",
+      "project_id": "loan",
+      "goal_id": "GOAL-01",
+      "provider": "mock/deterministic-ba-v1",
+      "included_reference_count": 1,
+      "omitted_reference_count": 1
+    },
+    {
+      "event": "model_completion_created",
+      "at": "2026-08-17T07:24:52.112694+00:00",
+      "request_id": "REQ-001",
+      "project_id": "loan",
+      "goal_id": "GOAL-01",
+      "provider": "mock/deterministic-ba-v1",
+      "included_reference_count": 1,
+      "omitted_reference_count": 1
+    },
+    {
+      "event": "model_completion_created",
+      "at": "2026-08-17T07:32:07.933506+00:00",
+      "request_id": "REQ-001",
+      "project_id": "loan",
+      "goal_id": "GOAL-01",
+      "provider": "mock/deterministic-ba-v1",
+      "included_reference_count": 1,
+      "omitted_reference_count": 1
+    },
+    {
+      "event": "model_completion_created",
+      "at": "2026-08-17T09:16:27.082140+00:00",
+      "request_id": "REQ-001",
+      "project_id": "loan",
+      "goal_id": "GOAL-01",
+      "provider": "mock/deterministic-ba-v1",
+      "included_reference_count": 1,
+      "omitted_reference_count": 1
+    }
+  ]
+}

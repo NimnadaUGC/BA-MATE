@@ -1,0 +1,92 @@
+---
+config:
+  layout: elk
+---
+flowchart TB
+  subgraph USERS["Users"]
+    OWNER["Owner / Lead BA"]
+    BA["Business Analyst"]
+    REVIEWER["Reviewer"]
+    VIEWER["Viewer"]
+  end
+
+  subgraph WORKSPACE["BA Mate Workspace"]
+    PROJECT["Project setup<br/>Template · domain · team · storage"]
+    SOURCES["Source ingestion<br/>PDF · DOCX · text · images · data"]
+    CONTEXT["Approved project context"]
+    CLARIFY["Clarification queue<br/>Questions · answers · unresolved issues"]
+    ARTIFACTS["BA artifacts<br/>Requirements · stories · criteria · registers"]
+    TRACE["Traceability and dependencies"]
+    DIAGRAMS["Diagram studio<br/>Mermaid diagrams · validation · versions"]
+    DOCUMENTS["Document studio<br/>SRS · BRD · reports · exports"]
+    GOVERNANCE["Governance and quality<br/>Policies · checks · ethics · approval"]
+    BASELINE["Approved baseline<br/>Versioned and locked"]
+    CHANGE["Change management<br/>Impact analysis · revalidation"]
+  end
+
+  subgraph AI["BA Mate Assistance"]
+    AIASSIST["Project-aware conversations"]
+    PROPOSALS["Visible proposals and diffs"]
+    METADATA["Provenance<br/>Model · prompt · confidence · limitations"]
+  end
+
+  subgraph STORAGE["Local-first Storage"]
+    REPOSITORY["Workspace repository"]
+    LOCAL["File system or IndexedDB"]
+    PORTABLE["Portable project package"]
+  end
+
+  subgraph RESEARCH["Isolated Research Boundary"]
+    EVAL["Evaluation runs"]
+    EXPORT["Anonymized research export"]
+  end
+
+  OWNER --> PROJECT
+  BA --> PROJECT
+  REVIEWER --> GOVERNANCE
+  VIEWER --> BASELINE
+
+  PROJECT --> SOURCES --> CONTEXT --> CLARIFY --> ARTIFACTS
+  ARTIFACTS --> TRACE
+  ARTIFACTS --> DIAGRAMS
+  ARTIFACTS --> DOCUMENTS
+  TRACE --> GOVERNANCE
+  DIAGRAMS --> GOVERNANCE
+  DOCUMENTS --> GOVERNANCE
+  GOVERNANCE --> BASELINE
+  BASELINE --> CHANGE
+  CHANGE --> CLARIFY
+  CHANGE --> GOVERNANCE
+
+  CONTEXT -.-> AIASSIST
+  CLARIFY -.-> AIASSIST
+  ARTIFACTS -.-> AIASSIST
+  AIASSIST --> PROPOSALS
+  PROPOSALS --> ARTIFACTS
+  PROPOSALS --> DIAGRAMS
+  PROPOSALS --> DOCUMENTS
+  PROPOSALS -.-> METADATA
+
+  PROJECT --> REPOSITORY
+  ARTIFACTS --> REPOSITORY
+  DIAGRAMS --> REPOSITORY
+  DOCUMENTS --> REPOSITORY
+  BASELINE --> REPOSITORY
+  REPOSITORY --> LOCAL --> PORTABLE
+
+  BASELINE -. "sanitized activity" .-> EVAL --> EXPORT
+  METADATA -. "evaluation provenance" .-> EVAL
+
+  classDef user fill:#eef2ff,stroke:#818cf8,color:#1e1b4b;
+  classDef process fill:#f0fdfa,stroke:#2dd4bf,color:#134e4a;
+  classDef artifact fill:#f5f3ff,stroke:#a78bfa,color:#3b0764;
+  classDef governance fill:#fff7ed,stroke:#fb923c,color:#7c2d12;
+  classDef storage fill:#f0fdf4,stroke:#4ade80,color:#14532d;
+  classDef research fill:#f3f4f6,stroke:#6b7280,color:#1f2937;
+
+  class OWNER,BA,REVIEWER,VIEWER user;
+  class PROJECT,SOURCES,CONTEXT,CLARIFY,AIASSIST,PROPOSALS process;
+  class ARTIFACTS,TRACE,DIAGRAMS,DOCUMENTS artifact;
+  class GOVERNANCE,BASELINE,CHANGE,METADATA governance;
+  class REPOSITORY,LOCAL,PORTABLE storage;
+  class EVAL,EXPORT research;

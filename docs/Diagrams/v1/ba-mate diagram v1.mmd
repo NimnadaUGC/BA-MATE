@@ -1,0 +1,384 @@
+%% BA Mate — comprehensive functional, governance, agentic, and data-flow blueprint
+%% Solid arrows = primary workflow or controlled data movement
+%% Dashed arrows = context, provenance, monitoring, or downstream impact
+flowchart TB
+
+  subgraph PEOPLE["1. People, roles, and entry points"]
+    direction LR
+    OWNER["Owner / Lead BA<br/>configure · author · approve"]
+    EDITOR["BA Editor<br/>discover · clarify · author"]
+    REVIEWER["Reviewer<br/>comment · validate · decide"]
+    VIEWER["Viewer<br/>read-only access"]
+    RESEARCHER["Research administrator<br/>evaluation controls only"]
+    ENTRY["BA Workspace<br/>Projects · Recent work · Templates · Settings"]
+    OWNER --> ENTRY
+    EDITOR --> ENTRY
+    REVIEWER --> ENTRY
+    VIEWER --> ENTRY
+  end
+
+  subgraph PROJECT["2. Project boundary — isolated BA workspace"]
+    direction TB
+    CREATE["Create or open project"]
+    TEMPLATE["Choose template<br/>Blank · Banking · HR · Retail · Organization"]
+    FOLDER["Choose local project folder<br/>or IndexedDB-managed workspace"]
+    INITIAL["Add initial inputs<br/>PDF · DOCX · text · image · structured data"]
+    DOMAIN["Select domain governance pack<br/>review project-specific additions"]
+    TEAM["Configure team and permissions"]
+    MANIFEST["Project manifest<br/>identity · domain · template · folder · schema version"]
+    OVERVIEW["Project overview<br/>gate · next action · blockers · coverage<br/>changes · processing · baseline"]
+    CREATE --> TEMPLATE --> FOLDER --> INITIAL --> DOMAIN --> TEAM --> MANIFEST --> OVERVIEW
+  end
+
+  ENTRY --> CREATE
+
+  subgraph LIFECYCLE["3. Primary governed workflow"]
+    direction LR
+    G1["1 · SETUP<br/>identity · policies · team · storage"]
+    G2["2 · DISCOVER<br/>ingest · classify · extract · assess gaps"]
+    G3["3 · CLARIFY<br/>prioritized iterative question rounds"]
+    G4["4 · DEFINE<br/>requirements · stories · criteria · registers"]
+    G5["5 · VALIDATE<br/>quality · ethics · transparency · traceability"]
+    G6["6 · APPROVE<br/>review decision · baseline · controlled export"]
+    MAINT["MAINTAIN<br/>change request · impact · revalidation"]
+    G1 --> G2 --> G3 --> G4 --> G5 --> G6 --> MAINT
+    MAINT -->|"new working cycle"| G3
+  end
+
+  MANIFEST --> G1
+  OVERVIEW -. "summarizes every gate" .-> LIFECYCLE
+
+  subgraph DISCOVERY["4. Source ingestion and project-context formation"]
+    direction LR
+    SRCIN["Source inputs"]
+    SCAN["Context scanner<br/>type · provenance · confidentiality"]
+    STATE["Visible processing state<br/>queued · scanning · processed · failed"]
+    ORIGINAL["Immutable original source"]
+    EXTRACT["Extracted concepts and candidate facts"]
+    DIAGNOSE["Detect<br/>duplicates · conflicts · unsupported formats<br/>missing information · uncertainty"]
+    CONTEXTREVIEW{"BA reviews extracted context"}
+    APPROVECTX["Approved project context"]
+    EXCLUDECTX["Excluded context<br/>retained for audit"]
+    SRCIN --> SCAN --> STATE
+    SCAN --> ORIGINAL
+    STATE --> EXTRACT --> DIAGNOSE --> CONTEXTREVIEW
+    CONTEXTREVIEW -->|"approve"| APPROVECTX
+    CONTEXTREVIEW -->|"exclude"| EXCLUDECTX
+  end
+
+  INITIAL --> SRCIN
+  G2 --> SCAN
+  APPROVECTX --> G3
+
+  subgraph CLARIFY["5. Iterative clarification engine"]
+    direction TB
+    ISSUEQUEUE["Prioritized queue<br/>Blocking · Important · Optional"]
+    QUESTION["Clarification object<br/>question · rationale · source · owner<br/>affected artifacts · suggested answers"]
+    QACTION{"BA decision"}
+    ANSWER["Accept / edit / custom answer"]
+    DEFER["Defer / unresolved"]
+    DISCARD["Discard with reason"]
+    ROUND["Clarification round history<br/>answers never lost"]
+    SUFFICIENT{"Context sufficient?"}
+    ISSUEQUEUE --> QUESTION --> QACTION
+    QACTION --> ANSWER --> ROUND --> SUFFICIENT
+    QACTION --> DEFER --> ROUND
+    QACTION --> DISCARD --> ROUND
+    SUFFICIENT -->|"No — generate next round"| ISSUEQUEUE
+  end
+
+  DIAGNOSE --> ISSUEQUEUE
+  G3 --> ISSUEQUEUE
+  SUFFICIENT -->|"Yes"| G4
+
+  subgraph KNOWLEDGE["6. Connected project knowledge and artifact graph"]
+    direction TB
+    REQ["Requirement<br/>functional or non-functional<br/>rationale · value · rules · fit criteria<br/>priority · owner · stakeholder · evidence"]
+    STORY["User story<br/>epic · feature · persona · narrative<br/>priority · owner · dependencies · evidence"]
+    AC["Acceptance criterion<br/>testable condition"]
+    REG["Registers<br/>Stakeholders · Assumptions · Decisions<br/>Risks · Issues"]
+    TRACE["Typed trace links<br/>source → clarification → requirement<br/>requirement → story → criterion"]
+    MATRIX["Traceability matrix<br/>Verified · Pending · Broken"]
+    DEPGRAPH["Dependency graph<br/>upstream and downstream impact"]
+    STATEFLOW["Artifact lifecycle<br/>Draft → In review → Approved<br/>Rejected → Draft with reason"]
+    COMMENTS["Comments · ownership · open questions"]
+    REQ --> STORY --> AC
+    REQ --> REG
+    REQ --> TRACE
+    STORY --> TRACE
+    AC --> TRACE --> MATRIX
+    TRACE --> DEPGRAPH
+    STATEFLOW -.-> REQ
+    STATEFLOW -.-> STORY
+    COMMENTS -.-> REQ
+    COMMENTS -.-> STORY
+    COMMENTS -.-> REG
+  end
+
+  ANSWER --> REQ
+  ANSWER --> REG
+  G4 --> REQ
+
+  subgraph CONVERSATION["7. Connected conversations and BA Mate assistance"]
+    direction TB
+    CHAT["Full-page project conversations"]
+    DRAWER["Project-aware BA Mate drawer<br/>overlay or optional desktop pin"]
+    AUTOCTX["Automatic visible context<br/>current page + selected object"]
+    ADDCTX["Explicit Add context browser"]
+    MENTION["Searchable @ mentions"]
+    TYPEDREF["Typed references<br/>source · clarification · requirement · story<br/>criterion · register · diagram · document<br/>section · change · check"]
+    PROMPT["User question or instruction"]
+    RESPONSE["BA Mate response<br/>discloses every object and version used"]
+    PROPOSAL["Governed proposal<br/>create/revise artifact · criterion · register<br/>diagram · document section · synchronization"]
+    REVIEWDIFF{"Human reviews visible diff<br/>and impact summary"}
+    ACCEPT["Accept<br/>create new working version"]
+    REJECT["Reject<br/>retain proposal in history"]
+    CHAT --> PROMPT
+    DRAWER --> PROMPT
+    AUTOCTX --> TYPEDREF
+    ADDCTX --> TYPEDREF
+    MENTION --> TYPEDREF
+    TYPEDREF --> PROMPT --> RESPONSE --> PROPOSAL --> REVIEWDIFF
+    REVIEWDIFF -->|"accept selected changes"| ACCEPT
+    REVIEWDIFF -->|"reject"| REJECT
+  end
+
+  APPROVECTX -.-> AUTOCTX
+  TRACE -. "resolves references" .-> TYPEDREF
+  ACCEPT --> REQ
+  ACCEPT --> STORY
+  ACCEPT --> AC
+  ACCEPT --> REG
+
+  subgraph DIAGRAMS["8. Diagram studio — hybrid Mermaid authoring"]
+    direction TB
+    DCREATE["Create diagram<br/>blank template or BA Mate generation"]
+    DTYPES["Flowchart · Sequence · State<br/>Entity relationship · User journey"]
+    DPROPOSAL["Generated Mermaid diff<br/>limitations + impact summary"]
+    DREVIEW{"BA accepts or rejects proposal"}
+    DSURFACES["Coordinated editors<br/>visual preview · node/edge inspector<br/>Mermaid source"]
+    DVALIDATE["Syntax validation<br/>actionable location + last valid preview"]
+    DLINK["Link nodes and edges<br/>requirements · stories · decisions<br/>sources · document sections"]
+    DVERSION["Save · rename · duplicate · comments<br/>version history · approval"]
+    DEXPORT["Export<br/>Mermaid · SVG · PNG · PDF"]
+    DSTALE["Stale-state warning<br/>linked artifact changed"]
+    DCREATE --> DTYPES --> DPROPOSAL --> DREVIEW
+    DREVIEW -->|"accept"| DSURFACES --> DVALIDATE --> DLINK --> DVERSION --> DEXPORT
+    DREVIEW -->|"reject"| REJECT
+    DSTALE --> DSURFACES
+  end
+
+  PROPOSAL --> DPROPOSAL
+  DEPGRAPH -. "linked change" .-> DSTALE
+  DLINK --> TRACE
+
+  subgraph DOCUMENTS["9. Structured document studio"]
+    direction TB
+    DCATALOG["Document catalog<br/>SRS · BRD · Requirements addendum<br/>Change impact · Traceability · Workshop summary"]
+    DTEMPLATE["Organization template + metadata"]
+    DBLOCKS["Portable structured blocks<br/>headings · paragraphs · lists · tables · callouts<br/>requirement/story tables · matrices<br/>diagram embeds · artifact references"]
+    DEDIT["Focused authoring<br/>styles · emphasis · alignment · links<br/>undo/redo · find · comments · reorder"]
+    SYNCELIGIBLE{"Approved requirements<br/>and stories only"}
+    SYNCMODE["Choose<br/>new SRS · update SRS · addendum"]
+    SYNCPROP["Section-level sync proposal<br/>additions · updates · removals · provenance"]
+    SYNCREVIEW{"Accept/reject each block<br/>or entire proposal"}
+    RECEIPT["Sync receipt<br/>artifact IDs + versions<br/>accepted blocks + document version"]
+    DOCVERSION["New reviewed document working version"]
+    DIAGPIN["Version-pinned approved diagram block"]
+    OUTSYNC["Out-of-sync / stale warning"]
+    REFRESH["Reviewed refresh proposal<br/>never silent replacement"]
+    DOCEXPORT["Export<br/>DOCX · PDF · Markdown · JSON<br/>with project/template/baseline/version metadata"]
+    DCATALOG --> DTEMPLATE --> DBLOCKS --> DEDIT
+    SYNCELIGIBLE --> SYNCMODE --> SYNCPROP --> SYNCREVIEW
+    SYNCREVIEW -->|"accepted blocks"| RECEIPT --> DOCVERSION
+    SYNCREVIEW -->|"rejected blocks"| REJECT
+    DBLOCKS --> DOCVERSION
+    DIAGPIN --> DOCVERSION
+    OUTSYNC --> REFRESH --> SYNCPROP
+    DOCVERSION --> DOCEXPORT
+  end
+
+  REQ --> SYNCELIGIBLE
+  STORY --> SYNCELIGIBLE
+  PROPOSAL --> SYNCPROP
+  DVERSION --> DIAGPIN
+  DEPGRAPH -. "artifact changed" .-> OUTSYNC
+  DSTALE -. "embedded version remains pinned" .-> OUTSYNC
+
+  subgraph GOVERNANCE["10. Governance, ethics, quality, and approval"]
+    direction TB
+    CORE["Immutable core safeguards<br/>human approval · uncertainty disclosure<br/>privacy · traceability"]
+    PACK["Domain policy pack<br/>Banking · HR · Retail"]
+    ORGPOLICY["Organization policies"]
+    PROJECTRULE["Project-specific rules<br/>may strengthen, never disable core"]
+    PRECEDENCE["Rule precedence and applicability engine"]
+    CHECKS["Check result<br/>Passed · Warning · Blocking · N/A<br/>policy source · rationale · owner · resolution"]
+    QUALITY["Requirements quality rubric<br/>clarity · completeness · consistency<br/>testability · feasibility"]
+    VALIDDECISION{"All blocking issues resolved?<br/>traceability sufficient?<br/>authorized approver?"}
+    CORE --> PRECEDENCE
+    PACK --> PRECEDENCE
+    ORGPOLICY --> PRECEDENCE
+    PROJECTRULE --> PRECEDENCE
+    PRECEDENCE --> CHECKS
+    QUALITY --> CHECKS --> VALIDDECISION
+  end
+
+  DOMAIN --> PACK
+  REQ --> QUALITY
+  STORY --> QUALITY
+  MATRIX --> CHECKS
+  APPROVECTX --> CHECKS
+  G5 --> PRECEDENCE
+  VALIDDECISION -->|"No"| ISSUEQUEUE
+
+  subgraph VERSIONING["11. Version control, approval, and audit"]
+    direction TB
+    AUTOSAVE["Autosave activity history"]
+    SNAPSHOT["Named snapshot or milestone"]
+    APPROVAL["Authorized reviewer decision<br/>Owner / Lead BA or permitted BA role"]
+    BASELINE["Locked approved baseline<br/>artifact + document + diagram manifests"]
+    RESTORE["Restore earlier state<br/>as a new working draft only"]
+    AUDIT["Append-only audit trail<br/>suggestions · edits · decisions · approvals<br/>exports · policy changes · sync receipts"]
+    EXPORTSET["Traceable baseline package<br/>documents · diagrams · matrices<br/>registers · JSON manifests"]
+    AUTOSAVE --> SNAPSHOT --> APPROVAL --> BASELINE --> EXPORTSET
+    BASELINE --> RESTORE --> AUTOSAVE
+    AUTOSAVE -.-> AUDIT
+    SNAPSHOT -.-> AUDIT
+    APPROVAL -.-> AUDIT
+    BASELINE -.-> AUDIT
+    EXPORTSET -.-> AUDIT
+  end
+
+  VALIDDECISION -->|"Yes"| G6
+  G6 --> APPROVAL
+  REQ -.-> AUTOSAVE
+  STORY -.-> AUTOSAVE
+  DVERSION -.-> AUTOSAVE
+  DOCVERSION -.-> AUTOSAVE
+  ACCEPT -.-> AUDIT
+  REJECT -.-> AUDIT
+
+  subgraph CHANGE["12. Post-baseline change and impact loop"]
+    direction TB
+    CR["Create change request<br/>rationale · source · owner"]
+    IMPACT["Dependency-impact analysis"]
+    AFFECTED["Affected requirements · stories · criteria<br/>registers · diagrams · document sections · checks"]
+    PROPOSEDIFF["Field-level and Mermaid/document diffs"]
+    SELECT["BA selects updates to accept"]
+    WORKING["New working versions<br/>baseline remains locked"]
+    RECHECK["Re-run clarification, governance,<br/>quality, traceability, and stale checks"]
+    NEWBASE["Approve a new locked baseline"]
+    CR --> IMPACT --> AFFECTED --> PROPOSEDIFF --> SELECT --> WORKING --> RECHECK --> NEWBASE
+  end
+
+  MAINT --> CR
+  BASELINE --> CR
+  DEPGRAPH --> IMPACT
+  WORKING --> DSTALE
+  WORKING --> OUTSYNC
+  RECHECK --> G3
+  RECHECK --> G5
+  NEWBASE --> BASELINE
+
+  subgraph AGENTIC["13. Replaceable agentic orchestration layer"]
+    direction TB
+    CONTRACT["Stable orchestration contract"]
+    CTXAPI["Context scanning"]
+    CLARIFYAPI["Clarification generation"]
+    ARTAPI["Artifact generation/revision"]
+    GOVAPI["Governance checks"]
+    IMPACTAPI["Dependency-impact analysis"]
+    DIAGRAMAPI["Diagram generation + validation"]
+    DOCAPI["Document generation + synchronization"]
+    META["Mandatory response metadata<br/>provider · model/configuration<br/>prompt-template version · confidence<br/>limitations · provenance"]
+    MOCK["Current deterministic local mock providers"]
+    REAL["Future real models + multi-agent workflow<br/>same frontend contracts"]
+    CONTRACT --> CTXAPI
+    CONTRACT --> CLARIFYAPI
+    CONTRACT --> ARTAPI
+    CONTRACT --> GOVAPI
+    CONTRACT --> IMPACTAPI
+    CONTRACT --> DIAGRAMAPI
+    CONTRACT --> DOCAPI
+    CTXAPI --> META
+    CLARIFYAPI --> META
+    ARTAPI --> META
+    GOVAPI --> META
+    IMPACTAPI --> META
+    DIAGRAMAPI --> META
+    DOCAPI --> META
+    MOCK --> CONTRACT
+    REAL -. "later provider replacement" .-> CONTRACT
+  end
+
+  SCAN -.-> CTXAPI
+  ISSUEQUEUE -.-> CLARIFYAPI
+  PROPOSAL -.-> ARTAPI
+  PRECEDENCE -.-> GOVAPI
+  IMPACT -.-> IMPACTAPI
+  DPROPOSAL -.-> DIAGRAMAPI
+  SYNCPROP -.-> DOCAPI
+  META -. "shown to BA for transparency" .-> RESPONSE
+
+  subgraph STORAGE["14. Local-first persistence and portability"]
+    direction LR
+    REPOSITORY["WorkspaceRepository abstraction"]
+    FSAPI["File System Access API<br/>when supported and permitted"]
+    INDEXEDDB["IndexedDB-managed workspace<br/>default browser persistence"]
+    ZIP["Project ZIP import/export fallback"]
+    PORTABLE["Portable project structure<br/>manifest · sources · artifacts · registers<br/>diagrams · documents · conversations<br/>checks · changes · audit · baselines"]
+    STATESTORE["Central typed mock store<br/>schema migration preserves existing work"]
+    STATESTORE --> REPOSITORY
+    REPOSITORY --> FSAPI
+    REPOSITORY --> INDEXEDDB
+    REPOSITORY --> ZIP
+    FSAPI --> PORTABLE
+    INDEXEDDB --> PORTABLE
+    ZIP --> PORTABLE
+  end
+
+  MANIFEST --> STATESTORE
+  AUDIT --> STATESTORE
+  TRACE --> STATESTORE
+  REQ --> STATESTORE
+  STORY --> STATESTORE
+  REG --> STATESTORE
+  DVERSION --> STATESTORE
+  DOCVERSION --> STATESTORE
+  BASELINE --> STATESTORE
+
+  subgraph RESEARCH["15. Research evaluation boundary — isolated from BA workspace"]
+    direction TB
+    RCONSOLE["Research console<br/>not shown in ordinary project workflow"]
+    RUN["Evaluation run<br/>case ID · condition · evaluator code · timer"]
+    REPRO["Reproducibility metadata<br/>dataset · model · prompt · prototype versions"]
+    ANON["Anonymized export<br/>artifacts + activity logs"]
+    CLAIMS["Controlled evaluation claims<br/>tied to the research golden path"]
+    RCONSOLE --> RUN --> REPRO --> ANON --> CLAIMS
+  end
+
+  RESEARCHER --> RCONSOLE
+  AUDIT -. "sanitized events" .-> ANON
+  META -. "model/prompt provenance" .-> REPRO
+
+  NEVER["SYSTEM-WIDE RULE<br/>BA Mate never silently changes an artifact.<br/>Every generated or synchronized change is visible,<br/>reviewable, attributable, versioned, and auditable."]
+  REVIEWDIFF ==> NEVER
+  SYNCREVIEW ==> NEVER
+  DREVIEW ==> NEVER
+  APPROVAL ==> NEVER
+
+  classDef actor fill:#eef3ff,stroke:#5b74b8,color:#20283d,stroke-width:1px;
+  classDef gate fill:#f0ecfb,stroke:#6750c7,color:#332567,stroke-width:2px;
+  classDef human fill:#fff4df,stroke:#b87522,color:#5c3510,stroke-width:2px;
+  classDef data fill:#edf7f1,stroke:#398060,color:#173c2c;
+  classDef service fill:#eaf3fb,stroke:#3979af,color:#17364f;
+  classDef warning fill:#fcecea,stroke:#b4423b,color:#5b211e,stroke-width:2px;
+  classDef research fill:#f2f2f0,stroke:#77776f,color:#30302d,stroke-dasharray:5 4;
+
+  class OWNER,EDITOR,REVIEWER,VIEWER,RESEARCHER actor;
+  class G1,G2,G3,G4,G5,G6,MAINT gate;
+  class CONTEXTREVIEW,QACTION,SUFFICIENT,REVIEWDIFF,DREVIEW,SYNCREVIEW,SYNCELIGIBLE,VALIDDECISION human;
+  class ORIGINAL,APPROVECTX,EXCLUDECTX,TRACE,MATRIX,DEPGRAPH,RECEIPT,BASELINE,AUDIT,PORTABLE,STATESTORE data;
+  class CTXAPI,CLARIFYAPI,ARTAPI,GOVAPI,IMPACTAPI,DIAGRAMAPI,DOCAPI,CONTRACT,META service;
+  class NEVER,DSTALE,OUTSYNC warning;
+  class RCONSOLE,RUN,REPRO,ANON,CLAIMS research;

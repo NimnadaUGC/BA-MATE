@@ -1,0 +1,28 @@
+DOWNLOAD Markdown 722
+DOWNLOAD DOCX 9213
+DOWNLOAD PDF 4788
+BEFORE UNDO [
+  'Synthetic audit fixture Software Requirements SpecificationSoftware Requirements Specification · v1draft',
+  'Mobile lending SRSSoftware Requirements Specification · v5in-review'
+]
+AFTER UNDO [
+  'Mobile lending SRSSoftware Requirements Specification · v6in-review',
+  'Mobile lending SRSSoftware Requirements Specification · v5in-review'
+]
+SYNC REVIEWED SYNCHRONIZATION
+Update existing SRS
+
+Nothing enters the document until you accept the proposed blocks.
+
+1 approved artifact changes
+Provenance and artifact versions will be recorded in a sync receipt.
+FR-01
+UPDATE · Requirements
+CURRENT DOCUMENT
+Previously synchronized FR-01
+PROPOSED CONTENT
+FR-01 — Submit a mobile loan application
+The system shall allow an authenticated eligible customer to submit a personal-loan application and receive either a decision or manual-review status.
+FR-01 v6
+Reject proposal
+Apply selected updates

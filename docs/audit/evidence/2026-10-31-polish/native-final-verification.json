@@ -1,0 +1,19 @@
+{
+  "health": {
+    "status": "ok",
+    "version": "1.0.0-beta.3",
+    "mode": "local",
+    "training": false
+  },
+  "all_existing_projects_unchanged": true,
+  "project_count": 10,
+  "completed_goal_retained": true,
+  "baselines_retained": 2,
+  "baseline_B1_unchanged": true,
+  "source_original_hash_matches": true,
+  "original_model_settings_retained": true,
+  "credential_present": false,
+  "clean_quit_reopen_verified": true,
+  "all_existing_projects_unchanged_after_final_reopen": true,
+  "final_native_port": 59015
+}

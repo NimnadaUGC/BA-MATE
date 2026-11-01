@@ -1,0 +1,10 @@
+{
+  "bundle": "release/core-beta-1.0.0-beta.1-20261031/mac-arm64/BA Mate.app",
+  "architecture": "mac-arm64",
+  "version": "1.0.0-beta.1",
+  "bundle_service_versions_match": true,
+  "bundled_frontend_served": true,
+  "code_signing": "unsigned",
+  "native_electron_window_tested": false,
+  "clean_device_tested": false
+}

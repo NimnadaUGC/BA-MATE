@@ -1,0 +1,387 @@
+---
+config:
+  layout: elk
+---
+flowchart TB
+
+  %% ─────────────────────────────────────────────
+  %% 1. PEOPLE AND ENTRY
+  %% ─────────────────────────────────────────────
+  subgraph ENTRY["1. People and workspace entry"]
+    direction LR
+    OWNER["Owner / Lead BA"]
+    EDITOR["BA Editor"]
+    REVIEWER["Reviewer"]
+    VIEWER["Viewer"]
+    RESEARCHER["Research administrator"]
+    WORKSPACE["BA Workspace<br/>Projects · Recent work · Templates · Settings"]
+
+    OWNER --> WORKSPACE
+    EDITOR --> WORKSPACE
+    REVIEWER --> WORKSPACE
+    VIEWER --> WORKSPACE
+  end
+
+  %% ─────────────────────────────────────────────
+  %% 2. PROJECT SETUP
+  %% ─────────────────────────────────────────────
+  subgraph SETUP["2. Project setup"]
+    direction LR
+    CREATE["Create or open project"]
+    CONFIG["Configure project<br/>Template · domain · team · storage"]
+    INPUTS["Add initial inputs<br/>PDF · DOCX · text · image · data"]
+    MANIFEST["Project manifest<br/>Identity · permissions · schema"]
+    OVERVIEW["Project overview<br/>Gate · blockers · coverage · baseline"]
+
+    CREATE --> CONFIG --> INPUTS --> MANIFEST --> OVERVIEW
+  end
+
+  WORKSPACE --> CREATE
+
+  %% ─────────────────────────────────────────────
+  %% 3. GOVERNED LIFECYCLE
+  %% ─────────────────────────────────────────────
+  subgraph LIFECYCLE["3. Governed BA lifecycle"]
+    direction LR
+    DISCOVER["Discover<br/>Ingest · extract · assess"]
+    CLARIFY["Clarify<br/>Questions · answers · gaps"]
+    DEFINE["Define<br/>Requirements · stories · criteria"]
+    VALIDATE["Validate<br/>Quality · ethics · traceability"]
+    APPROVE["Approve<br/>Review · baseline · export"]
+    MAINTAIN["Maintain<br/>Change · impact · revalidation"]
+
+    DISCOVER --> CLARIFY --> DEFINE --> VALIDATE --> APPROVE --> MAINTAIN
+    MAINTAIN -->|"new working cycle"| CLARIFY
+  end
+
+  MANIFEST --> DISCOVER
+  OVERVIEW -.-> LIFECYCLE
+
+  %% ─────────────────────────────────────────────
+  %% 4. DISCOVERY
+  %% ─────────────────────────────────────────────
+  subgraph SOURCES["4. Source ingestion and context"]
+    direction LR
+    SOURCE["Source inputs"]
+    SCAN["Scan and classify<br/>Type · provenance · confidentiality"]
+    PROCESS["Processing status<br/>Queued · scanning · processed · failed"]
+    EXTRACT["Extract concepts and facts"]
+    DIAGNOSE["Detect gaps<br/>Duplicates · conflicts · uncertainty"]
+    CONTEXTREVIEW{"BA reviews context"}
+    APPROVEDCTX["Approved project context"]
+    EXCLUDEDCTX["Excluded context<br/>Retained for audit"]
+
+    SOURCE --> SCAN --> PROCESS --> EXTRACT --> DIAGNOSE --> CONTEXTREVIEW
+    SCAN --> ORIGINAL["Immutable original source"]
+    CONTEXTREVIEW -->|"approve"| APPROVEDCTX
+    CONTEXTREVIEW -->|"exclude"| EXCLUDEDCTX
+  end
+
+  INPUTS --> SOURCE
+  APPROVEDCTX --> CLARIFY
+
+  %% ─────────────────────────────────────────────
+  %% 5. CLARIFICATION
+  %% ─────────────────────────────────────────────
+  subgraph QUESTIONS["5. Iterative clarification"]
+    direction TB
+    QUEUE["Prioritized issue queue<br/>Blocking · important · optional"]
+    QUESTION["Clarification object<br/>Question · rationale · source · owner"]
+    DECISION{"BA decision"}
+    ANSWER["Accept, edit, or answer"]
+    DEFER["Defer as unresolved"]
+    DISCARD["Discard with reason"]
+    HISTORY["Round history<br/>Answers are never lost"]
+    SUFFICIENT{"Context sufficient?"}
+
+    QUEUE --> QUESTION --> DECISION
+    DECISION --> ANSWER --> HISTORY
+    DECISION --> DEFER --> HISTORY
+    DECISION --> DISCARD --> HISTORY
+    HISTORY --> SUFFICIENT
+    SUFFICIENT -->|"No"| QUEUE
+  end
+
+  DIAGNOSE --> QUEUE
+  CLARIFY --> QUEUE
+  SUFFICIENT -->|"Yes"| DEFINE
+
+  %% ─────────────────────────────────────────────
+  %% 6. KNOWLEDGE AND ARTIFACTS
+  %% ─────────────────────────────────────────────
+  subgraph ARTIFACTS["6. Project knowledge and artifacts"]
+    direction LR
+    REQUIREMENTS["Requirements<br/>Functional · non-functional · rationale · priority"]
+    STORIES["User stories<br/>Epic · persona · dependencies"]
+    CRITERIA["Acceptance criteria<br/>Testable conditions"]
+    REGISTERS["Registers<br/>Stakeholders · assumptions · decisions · risks · issues"]
+    TRACE["Traceability links<br/>Source → clarification → requirement → story → criterion"]
+    MATRIX["Traceability matrix<br/>Verified · pending · broken"]
+    DEPENDENCIES["Dependency graph<br/>Upstream and downstream impact"]
+    LIFECYCLESTATE["Artifact states<br/>Draft · in review · approved · rejected"]
+    COMMENTS["Comments · ownership · open questions"]
+
+    REQUIREMENTS --> STORIES --> CRITERIA
+    REQUIREMENTS --> REGISTERS
+    REQUIREMENTS --> TRACE
+    STORIES --> TRACE
+    CRITERIA --> TRACE
+    TRACE --> MATRIX
+    TRACE --> DEPENDENCIES
+    LIFECYCLESTATE -.-> REQUIREMENTS
+    LIFECYCLESTATE -.-> STORIES
+    COMMENTS -.-> REQUIREMENTS
+    COMMENTS -.-> REGISTERS
+  end
+
+  ANSWER --> REQUIREMENTS
+  ANSWER --> REGISTERS
+  DEFINE --> REQUIREMENTS
+
+  %% ─────────────────────────────────────────────
+  %% 7. BA MATE
+  %% ─────────────────────────────────────────────
+  subgraph ASSISTANCE["7. BA Mate assistance"]
+    direction TB
+    CHAT["Project conversation"]
+    DRAWER["BA Mate drawer"]
+    CONTEXTREF["Visible context<br/>Current page · selected object · added references"]
+    PROMPT["Question or instruction"]
+    RESPONSE["Response<br/>Referenced objects · versions · limitations"]
+    PROPOSAL["Governed proposal<br/>Artifact · diagram · document change"]
+    DIFF{"Human reviews diff and impact"}
+    ACCEPT["Accept selected changes"]
+    REJECT["Reject and retain history"]
+
+    CHAT --> PROMPT
+    DRAWER --> PROMPT
+    CONTEXTREF --> PROMPT
+    PROMPT --> RESPONSE --> PROPOSAL --> DIFF
+    DIFF -->|"accept"| ACCEPT
+    DIFF -->|"reject"| REJECT
+  end
+
+  APPROVEDCTX -.-> CONTEXTREF
+  TRACE -.-> CONTEXTREF
+  ACCEPT --> REQUIREMENTS
+  ACCEPT --> STORIES
+  ACCEPT --> CRITERIA
+  ACCEPT --> REGISTERS
+
+  %% ─────────────────────────────────────────────
+  %% 8. OUTPUT STUDIOS
+  %% ─────────────────────────────────────────────
+  subgraph OUTPUTS["8. Diagram and document studios"]
+    direction LR
+
+    subgraph DIAGRAMSTUDIO["Diagram studio"]
+      direction TB
+      DIAGRAMCREATE["Create or generate diagram"]
+      DIAGRAMEDIT["Visual editor and Mermaid source"]
+      DIAGRAMCHECK["Validate syntax"]
+      DIAGRAMLINK["Link nodes and edges to artifacts"]
+      DIAGRAMVERSION["Version, approve, and export"]
+
+      DIAGRAMCREATE --> DIAGRAMEDIT --> DIAGRAMCHECK --> DIAGRAMLINK --> DIAGRAMVERSION
+    end
+
+    subgraph DOCUMENTSTUDIO["Document studio"]
+      direction TB
+      DOCUMENTCREATE["Choose document<br/>SRS · BRD · report · addendum"]
+      DOCUMENTEDIT["Edit structured blocks<br/>Headings · tables · references"]
+      SYNCPROPOSAL["Section-level synchronization proposal"]
+      SYNCREVIEW{"Review synchronized blocks"}
+      DOCUMENTVERSION["New document version"]
+      DOCUMENTEXPORT["Export<br/>DOCX · PDF · Markdown · JSON"]
+
+      DOCUMENTCREATE --> DOCUMENTEDIT --> SYNCPROPOSAL --> SYNCREVIEW
+      SYNCREVIEW -->|"accept"| DOCUMENTVERSION --> DOCUMENTEXPORT
+      SYNCREVIEW -->|"reject"| REJECT
+    end
+  end
+
+  PROPOSAL --> DIAGRAMCREATE
+  PROPOSAL --> SYNCPROPOSAL
+  REQUIREMENTS --> SYNCPROPOSAL
+  STORIES --> SYNCPROPOSAL
+  DIAGRAMLINK --> TRACE
+  DEPENDENCIES -.-> STALE["Stale linked artifact warning"]
+  STALE -.-> DIAGRAMEDIT
+  STALE -.-> DOCUMENTEDIT
+
+  %% ─────────────────────────────────────────────
+  %% 9. GOVERNANCE AND QUALITY
+  %% ─────────────────────────────────────────────
+  subgraph GOVERNANCE["9. Governance, quality, and approval"]
+    direction LR
+    SAFEGUARDS["Core safeguards<br/>Human approval · privacy · uncertainty · traceability"]
+    POLICY["Applicable policies<br/>Domain · organization · project"]
+    RULES["Rule precedence and applicability"]
+    CHECKS["Checks<br/>Passed · warning · blocking · N/A"]
+    QUALITY["Quality review<br/>Clarity · completeness · consistency · testability"]
+    GATE{"Blocking issues resolved?"}
+
+    SAFEGUARDS --> RULES
+    POLICY --> RULES
+    RULES --> CHECKS
+    QUALITY --> CHECKS
+    CHECKS --> GATE
+  end
+
+  REQUIREMENTS --> QUALITY
+  STORIES --> QUALITY
+  MATRIX --> CHECKS
+  APPROVEDCTX --> CHECKS
+  VALIDATE --> RULES
+  GATE -->|"No"| QUEUE
+  GATE -->|"Yes"| APPROVE
+
+  %% ─────────────────────────────────────────────
+  %% 10. BASELINE AND CHANGE
+  %% ─────────────────────────────────────────────
+  subgraph CONTROL["10. Baseline, audit, and change"]
+    direction LR
+    HISTORYLOG["Append-only audit trail<br/>Suggestions · edits · decisions · exports"]
+    SNAPSHOT["Named snapshot"]
+    DECISIONLOG["Authorized approval decision"]
+    BASELINE["Locked approved baseline<br/>Artifact · document · diagram manifests"]
+    CHANGE["Change request"]
+    IMPACT["Impact analysis"]
+    WORKING["New working versions"]
+    RECHECK["Re-run clarification, quality,<br/>governance, and stale checks"]
+
+    HISTORYLOG --> SNAPSHOT --> DECISIONLOG --> BASELINE
+    BASELINE --> CHANGE --> IMPACT --> WORKING --> RECHECK
+    RECHECK --> CLARIFY
+    RECHECK --> VALIDATE
+  end
+
+  APPROVE --> DECISIONLOG
+  REQUIREMENTS -.-> HISTORYLOG
+  STORIES -.-> HISTORYLOG
+  DIAGRAMVERSION -.-> HISTORYLOG
+  DOCUMENTVERSION -.-> HISTORYLOG
+  DEPENDENCIES --> IMPACT
+  WORKING -.-> STALE
+  BASELINE --> CHANGE
+
+  %% ─────────────────────────────────────────────
+  %% 11. ORCHESTRATION
+  %% ─────────────────────────────────────────────
+  subgraph AGENTS["11. Replaceable agentic orchestration"]
+    direction LR
+    CONTRACT["Stable orchestration contract"]
+    CONTEXTAPI["Context scanning"]
+    CLARIFYAPI["Clarification generation"]
+    ARTIFACTAPI["Artifact generation"]
+    GOVERNANCEAPI["Governance checks"]
+    IMPACTAPI["Impact analysis"]
+    DIAGRAMAPI["Diagram generation"]
+    DOCUMENTAPI["Document generation"]
+    METADATA["Response metadata<br/>Provider · model · prompt version · confidence · provenance"]
+    MOCK["Deterministic local mock providers"]
+    FUTURE["Future model providers"]
+
+    MOCK --> CONTRACT
+    FUTURE -.-> CONTRACT
+    CONTRACT --> CONTEXTAPI
+    CONTRACT --> CLARIFYAPI
+    CONTRACT --> ARTIFACTAPI
+    CONTRACT --> GOVERNANCEAPI
+    CONTRACT --> IMPACTAPI
+    CONTRACT --> DIAGRAMAPI
+    CONTRACT --> DOCUMENTAPI
+    CONTEXTAPI --> METADATA
+    CLARIFYAPI --> METADATA
+    ARTIFACTAPI --> METADATA
+    GOVERNANCEAPI --> METADATA
+    IMPACTAPI --> METADATA
+    DIAGRAMAPI --> METADATA
+    DOCUMENTAPI --> METADATA
+  end
+
+  SCAN -.-> CONTEXTAPI
+  QUEUE -.-> CLARIFYAPI
+  PROPOSAL -.-> ARTIFACTAPI
+  RULES -.-> GOVERNANCEAPI
+  IMPACT -.-> IMPACTAPI
+  DIAGRAMCREATE -.-> DIAGRAMAPI
+  SYNCPROPOSAL -.-> DOCUMENTAPI
+  METADATA -.-> RESPONSE
+
+  %% ─────────────────────────────────────────────
+  %% 12. LOCAL-FIRST STORAGE
+  %% ─────────────────────────────────────────────
+  subgraph STORAGE["12. Local-first persistence"]
+    direction LR
+    STORE["Central typed workspace store"]
+    REPOSITORY["Workspace repository"]
+    FILESYSTEM["File System Access API"]
+    INDEXEDDB["IndexedDB workspace"]
+    ZIP["ZIP import/export"]
+    PACKAGE["Portable project package<br/>Manifest · sources · artifacts · documents · audit · baselines"]
+
+    STORE --> REPOSITORY
+    REPOSITORY --> FILESYSTEM
+    REPOSITORY --> INDEXEDDB
+    REPOSITORY --> ZIP
+    FILESYSTEM --> PACKAGE
+    INDEXEDDB --> PACKAGE
+    ZIP --> PACKAGE
+  end
+
+  MANIFEST --> STORE
+  REQUIREMENTS --> STORE
+  STORIES --> STORE
+  REGISTERS --> STORE
+  DIAGRAMVERSION --> STORE
+  DOCUMENTVERSION --> STORE
+  BASELINE --> STORE
+  HISTORYLOG --> STORE
+
+  %% ─────────────────────────────────────────────
+  %% 13. RESEARCH BOUNDARY
+  %% ─────────────────────────────────────────────
+  subgraph RESEARCH["13. Isolated research evaluation"]
+    direction LR
+    CONSOLE["Research console<br/>Separate from BA workflow"]
+    RUN["Evaluation run<br/>Case · condition · evaluator · timer"]
+    REPRODUCE["Reproducibility metadata<br/>Dataset · model · prompt · versions"]
+    ANONYMIZE["Anonymized export"]
+    CLAIMS["Controlled evaluation claims"]
+
+    CONSOLE --> RUN --> REPRODUCE --> ANONYMIZE --> CLAIMS
+  end
+
+  RESEARCHER --> CONSOLE
+  HISTORYLOG -. "sanitized events" .-> ANONYMIZE
+  METADATA -.-> REPRODUCE
+
+  %% ─────────────────────────────────────────────
+  %% SYSTEM RULE
+  %% ─────────────────────────────────────────────
+  RULE["SYSTEM RULE<br/>BA Mate never silently changes artifacts.<br/>Every change is visible, reviewable, attributable,<br/>versioned, and auditable."]
+  DIFF ==> RULE
+  SYNCREVIEW ==> RULE
+  DECISIONLOG ==> RULE
+
+  %% ─────────────────────────────────────────────
+  %% STYLES
+  %% ─────────────────────────────────────────────
+  classDef actor fill:#eef2ff,stroke:#818cf8,color:#1e1b4b;
+  classDef process fill:#f0fdfa,stroke:#2dd4bf,color:#134e4a;
+  classDef artifact fill:#f5f3ff,stroke:#a78bfa,color:#3b0764;
+  classDef governance fill:#fff7ed,stroke:#fb923c,color:#7c2d12;
+  classDef storage fill:#f0fdf4,stroke:#4ade80,color:#14532d;
+  classDef warning fill:#fff1f2,stroke:#fb7185,color:#881337,stroke-width:2px;
+  classDef research fill:#f3f4f6,stroke:#6b7280,color:#1f2937;
+  classDef decision fill:#fefce8,stroke:#facc15,color:#713f12,stroke-width:2px;
+
+  class OWNER,EDITOR,REVIEWER,VIEWER,RESEARCHER actor;
+  class WORKSPACE,CREATE,CONFIG,INPUTS,MANIFEST,OVERVIEW,DISCOVER,CLARIFY,DEFINE,VALIDATE,APPROVE,MAINTAIN,SOURCE,SCAN,PROCESS,EXTRACT,DIAGNOSE,QUEUE,QUESTION,ANSWER,DEFER,DISCARD,HISTORY,CHAT,DRAWER,CONTEXTREF,PROMPT,RESPONSE,PROPOSAL,ACCEPT,REJECT process;
+  class REQUIREMENTS,STORIES,CRITERIA,REGISTERS,TRACE,MATRIX,DEPENDENCIES,LIFECYCLESTATE,COMMENTS,APPROVEDCTX,EXCLUDEDCTX,ORIGINAL,DIAGRAMEDIT,DIAGRAMCHECK,DIAGRAMLINK,DIAGRAMVERSION,DOCUMENTEDIT,DOCUMENTVERSION,PACKAGE,BASELINE,HISTORYLOG artifact;
+  class SAFEGUARDS,POLICY,RULES,CHECKS,QUALITY,DECISIONLOG,CHANGE,IMPACT,WORKING,RECHECK,CONTRACT,METADATA governance;
+  class STORE,REPOSITORY,FILESYSTEM,INDEXEDDB,ZIP storage;
+  class RULE,STALE warning;
+  class CONSOLE,RUN,REPRODUCE,ANONYMIZE,CLAIMS research;
+  class CONTEXTREVIEW,DECISION,SUFFICIENT,DIFF,SYNCREVIEW,GATE decision;
