@@ -1,16 +1,9 @@
-import type { Project, ProjectGoal, Source } from "./types";
+import type { Project } from "./types";
 import { addAudit, enforceWorkingVersions } from "./store";
 import { sourceTypeForName, type WorkspaceAnalysis } from "./workspaceFiles";
 import { api } from "./api";
-
-export function goalSelectableSource(source: Source): boolean {
-  return source.approved && source.status === "Analyzed" && Boolean(source.sha256 && source.relativePath);
-}
-
-export function goalSourceCurrent(goal: ProjectGoal, source: Source): boolean {
-  return goal.sourceIds.includes(source.id) && goalSelectableSource(source) &&
-    goal.sourceRevisionPins?.[source.id] === source.sha256;
-}
+import { goalSourceCurrent } from "./sourceScope";
+export { goalSelectableSource, goalSourceCurrent } from "./sourceScope";
 
 export function requestProjectAgentRun(project: Project, analysis: WorkspaceAnalysis, retry = false) {
   const goal = project.goals.find(item => item.id === project.activeGoalId && item.status === "Active");

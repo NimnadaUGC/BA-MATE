@@ -4,6 +4,7 @@ The roles never edit the workspace. The BA adopts individual suggestions in the 
 Unreviewed extraction is supplied only to source triage and labelled accordingly.
 """
 import asyncio
+import base64
 import hashlib
 import json
 import logging
@@ -19,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from . import runtime
 from .project_analysis import analysis_snapshot
-from .project_files import _read_registry
+from .project_files import _read_registry, read_project_file
 from .persistence import read_workspace
 from .providers import ModelProvider
 from .workflow import INFERENCE_SLOT
@@ -212,13 +213,33 @@ async def _ask(role: str, payload: dict, model: type[BaseModel]) -> dict:
         raise ValueError(f'{role} returned an invalid proposal.') from exc
 
 
-async def _run(request: AgentStart, sources: dict, signature: str) -> None:
+def _snapshot_sources_current(workspace_id: str, sources: dict, approved_sources: list[dict]) -> bool:
+    """Check bytes for source excerpts used by the roles, independently of scan timing."""
+    selected = {str(item.get('path', '')): str(item.get('sha256', '')) for item in approved_sources}
+    intake_paths = [path for path, item in sorted(sources.items()) if item.get('status') == 'needs_review'][:20]
+    for path in set(intake_paths) | set(selected):
+        item = sources.get(path) or {}
+        digest = item.get('sha256')
+        if item.get('status') != 'needs_review' or not digest or (path in selected and selected[path] != digest):
+            return False
+        try:
+            original = read_project_file(workspace_id, path)
+            if hashlib.sha256(base64.b64decode(original['data'], validate=True)).hexdigest() != digest:
+                return False
+        except (HTTPException, OSError, ValueError, KeyError):
+            return False
+    return True
+
+
+async def _run(request: AgentStart, sources: dict, signature: str, check_originals: bool = False) -> None:
     workspace_id = request.workspace_id
     _archive_previous(workspace_id)
     result = {'signature': signature, 'status': 'running', 'roles': {}, 'requires_human_acceptance': True,
               'context_manifest': _context_manifest(request, sources, signature)}
     _write(workspace_id, result)
     try:
+        if check_originals and not await asyncio.to_thread(_snapshot_sources_current, workspace_id, sources, request.approved_sources):
+            raise ValueError('Project sources changed or are unavailable. Wait for the folder scan and review the current revisions.')
         approved = {str(item.get('path', '')): str(item.get('sha256', '')) for item in request.approved_sources}
         excerpts = [{'path': path, 'review_status': 'unreviewed extraction',
                      'text': item.get('content', '')[:5000], 'limitations': item.get('limitations', [])}
@@ -253,6 +274,8 @@ async def _run(request: AgentStart, sources: dict, signature: str) -> None:
                                               else {'status': 'ready', 'proposal': governance})
         _write(workspace_id, result)
         if request.active_goal:
+            if check_originals and not await asyncio.to_thread(_snapshot_sources_current, workspace_id, sources, request.approved_sources):
+                raise ValueError('Project sources changed or are unavailable. Wait for the folder scan and review the current revisions.')
             reviewed_excerpts = [{'path': path, 'text': item.get('content', '')[:5000],
                                   'limitations': item.get('limitations', [])}
                                  for path, item in sorted(sources.items())
@@ -274,10 +297,14 @@ async def _run(request: AgentStart, sources: dict, signature: str) -> None:
                 result['roles']['requirement_drafting'] = {'status': 'ready', 'proposal': drafting}
             except Exception as exc:
                 result['roles']['requirement_drafting'] = {'status': 'failed', 'error': str(exc)[:300]}
+        if check_originals and not await asyncio.to_thread(_snapshot_sources_current, workspace_id, sources, request.approved_sources):
+            raise ValueError('Project sources changed or are unavailable. Wait for the folder scan and review the current revisions.')
         result['status'] = 'ready'
     except Exception as exc:
         result['status'] = 'failed'
         result['error'] = str(getattr(exc, 'detail', exc))[:300]
+        if check_originals and 'Project sources changed or are unavailable' in result['error']:
+            result['roles'] = {}
         if result['roles'].get('source_intake', {}).get('status') == 'running':
             result['roles']['source_intake'] = {'status': 'failed', 'error': result['error']}
     _write(workspace_id, result)
@@ -302,6 +329,10 @@ async def start_agents(request: AgentStart) -> dict:
         return {'status': 'local_model_required', 'roles': {},
                 'message': 'Automatic source triage uses a local model. Select local Ollama to process unreviewed folder content.',
                 'requires_human_acceptance': True}
+    if record and not await asyncio.to_thread(_snapshot_sources_current, request.workspace_id, snapshot['sources'], request.approved_sources):
+        return {'status': 'waiting_for_sources', 'roles': {},
+                'message': 'Project sources changed or are unavailable. Wait for the folder scan and review the current revisions.',
+                'requires_human_acceptance': True}
     signature = _signature(request, snapshot['sources'])
     async with _lock:
         existing = _read(request.workspace_id)
@@ -316,7 +347,7 @@ async def start_agents(request: AgentStart) -> dict:
             any(role.get('status') == 'failed' for role in existing.get('roles', {}).values()))
         if existing and existing.get('signature') == signature and not retry_failed and existing.get('status') != 'running':
             return existing
-        _tasks[request.workspace_id] = asyncio.create_task(_run(request, snapshot['sources'], signature))
+        _tasks[request.workspace_id] = asyncio.create_task(_run(request, snapshot['sources'], signature, bool(record)))
         return {'status': 'running', 'signature': signature, 'roles': {}, 'requires_human_acceptance': True}
 
 

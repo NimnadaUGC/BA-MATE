@@ -1,5 +1,7 @@
 import type { Project, ProjectGoal, WorkflowGate } from "./types";
-import { approvalAllowed, blockers, revisionOf } from "./store";
+import { approvalAllowed, blockers, revisionOf, sourcePassageCurrent } from "./store";
+import { baselineDependencyIssues, baselineManifestWithChanges, changesNeedingRevalidation } from "./controlledChanges";
+import { goalSourceCurrent, staleGoalSourceIds } from "./sourceScope";
 
 export interface StageReadinessItem {
   id: string;
@@ -34,6 +36,7 @@ const supportedByVerifiedLink = (project: Project, artifactId: string) => {
         link.status === "Verified" &&
         link.fromRevision === revisionOf(project, link.from) &&
         link.toRevision === revisionOf(project, link.to) &&
+        sourcePassageCurrent(project, link) &&
         visit(link.from, next),
     );
   };
@@ -58,7 +61,7 @@ export function stageReadiness(
 
   const currentGate = gate ?? goal.gate;
   const approvedSources = project.sources.filter(
-    (source) => source.approved && goal.sourceIds.includes(source.id),
+    (source) => goalSourceCurrent(goal, source),
   );
   const clarifications = project.clarifications.filter((item) => inGoal(goal, item));
   const requirements = project.requirements.filter((item) => inGoal(goal, item));
@@ -168,12 +171,11 @@ export function stageReadiness(
         {
           id: "evidence-linked",
           label: "Evidence references attached",
-          description: "Every requirement and story must identify its supporting context.",
+          description: "Every requirement and story must identify its supporting context. Evidence links can be verified during Validate.",
           complete:
             artifacts.length > 0 &&
-            requirements.every((item) => item.sourceIds.length > 0) &&
-            stories.every((item) => item.sourceIds.length > 0),
-          route: "artifacts",
+            artifacts.every((item) => item.sourceIds.length > 0 || project.traceLinks.some(link => link.to === item.id && link.status !== "Broken" && (link.from === "PROJECT-BRIEF" || [...project.sources, ...project.clarifications, ...project.requirements, ...project.stories].some(source => source.id === link.from)))),
+          route: "traceability",
         },
       ];
     case "Validate":
@@ -207,21 +209,12 @@ export function stageReadiness(
           id: "approval-ready",
           label: "Approval policy satisfied",
           description: "Complete artifact, diagram, document and authority reviews.",
-          complete: approvalAllowed(project, goal.id),
+          complete: approvalAllowed(project, goal.id) && baselineDependencyIssues(project, goal.id).length === 0,
           route: "activity",
         },
       ];
     case "Approve": {
-      const scopedIds = new Set(
-        [
-          ...project.requirements,
-          ...project.stories,
-          ...project.diagrams,
-          ...project.documents,
-        ]
-          .filter((item) => inGoal(goal, item))
-          .map((item) => item.id),
-      );
+      const scopedIds = new Set(baselineManifestWithChanges(project, goal.id).map(item => item.id));
       const hasCurrentBaseline = project.versions.some(
         (version) =>
           version.type === "Baseline" &&
@@ -235,6 +228,20 @@ export function stageReadiness(
       );
       return [
         {
+          id: "working-reviews-current",
+          label: "Current work and evidence reviewed",
+          description: "Recheck review status, evidence and approval policy after any confirmed decision or dependency changes.",
+          complete: approvalAllowed(project, goal.id) && baselineDependencyIssues(project, goal.id).length === 0,
+          route: "activity",
+        },
+        {
+          id: "source-revisions",
+          label: "Selected source revisions current",
+          description: "Review changed sources and select their current revisions for this goal.",
+          complete: staleGoalSourceIds(project, goal).length === 0,
+          route: "sources",
+        },
+        {
           id: "baseline-approved",
           label: "Approved baseline created",
           description: "Lock the reviewed, goal-scoped package as an approved baseline.",
@@ -245,9 +252,7 @@ export function stageReadiness(
           id: "changes-revalidated",
           label: "Implemented changes revalidated",
           description: "Any implemented change must be revalidated before completion.",
-          complete: project.changes
-            .filter((item) => inGoal(goal, item))
-            .every((item) => item.status !== "Implemented"),
+          complete: changesNeedingRevalidation(project).length === 0,
           route: "changes",
         },
       ];
@@ -278,5 +283,5 @@ export const canCompleteGoal = (project: Project, goalId: string) => {
 
 export const canCreateBaseline = (project: Project) => {
   const goal = activeGoal(project);
-  return Boolean(goal && goal.gate === "Approve" && approvalAllowed(project, goal.id));
+  return Boolean(goal && goal.gate === "Approve" && approvalAllowed(project, goal.id) && baselineDependencyIssues(project, goal.id).length === 0 && changesNeedingRevalidation(project).length === 0);
 };

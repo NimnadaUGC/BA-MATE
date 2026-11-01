@@ -1,0 +1,55 @@
+{
+  "http_status": 200,
+  "wall_seconds": 15.9,
+  "source_characters": 626508,
+  "response": {
+    "metadata": {
+      "request_id": "audit-long-context-20261029",
+      "provider": "openrouter",
+      "serving_provider": "Nvidia",
+      "model": "nvidia/nemotron-3.5-super-vl:free",
+      "requested_model": "nvidia/nemotron-3.5-super-vl:free",
+      "framework_version": "ba-framework-0.4.0",
+      "prompt_version": "evidence-workflow-3",
+      "condition": "Proposed workflow",
+      "task": "conversation",
+      "elapsed_ms": 15774,
+      "usage": {
+        "input_tokens": 223756,
+        "output_tokens": 83,
+        "cost": 0
+      },
+      "temperature": 0.2,
+      "context_tokens": 1000000,
+      "output_tokens": 32768,
+      "retries": 0,
+      "context_hash": "cc34978e0c057fb43c21fc4b0506b0f469877062c390f2f5725538ed0be6aee8"
+    },
+    "result": {
+      "text": "orchid-7426",
+      "proposal": null,
+      "context_receipt": {
+        "included_reference_ids": [
+          "SYN-LONG-0",
+          "SYN-LONG-1",
+          "SYN-LONG-2",
+          "SYN-LONG-3"
+        ],
+        "omitted_reference_ids": [],
+        "partial_reference_ids": [],
+        "history_messages_included": 0,
+        "history_messages_omitted": 0,
+        "governance_included": true,
+        "token_budget": 1000000,
+        "estimated_tokens": 215658,
+        "output_reservation": 32768,
+        "safety_tokens": 10000,
+        "counting_method": "reference tokenizer estimate (+20%); provider count may differ",
+        "strategy": "priority-budget-compaction",
+        "context_hash": "cc34978e0c057fb43c21fc4b0506b0f469877062c390f2f5725538ed0be6aee8"
+      },
+      "verification_warnings": [],
+      "requires_human_acceptance": true
+    }
+  }
+}

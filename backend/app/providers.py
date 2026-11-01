@@ -3,6 +3,7 @@ import httpx
 from fastapi import HTTPException
 from . import runtime
 from .runtime import ProviderConfig
+from .token_management import resolve_config, request_tokens
 
 
 REMOTE_ENDPOINTS = {
@@ -71,7 +72,7 @@ def _extract_openai(payload: dict, config: ProviderConfig):
     status = payload.get('status')
     incomplete_reason = (payload.get('incomplete_details') or {}).get('reason')
     if status == 'incomplete' or incomplete_reason:
-        raise HTTPException(502, 'The model ran out of output space. Request fewer artifacts or increase the output limit in Settings.')
+        raise HTTPException(502, f'The model ran out of output space ({config.output_tokens:,} tokens, including reasoning where applicable). Increase Maximum output in Settings or request fewer artifacts.')
     if status in {'failed', 'cancelled'} or payload.get('error'):
         raise HTTPException(502, 'OpenAI could not complete the response. No project changes were applied.')
     texts, refused = [], False
@@ -97,7 +98,7 @@ def _extract_openai(payload: dict, config: ProviderConfig):
 def _extract_gemini(payload: dict, config: ProviderConfig):
     status = payload.get('status')
     if status == 'incomplete':
-        raise HTTPException(502, 'The model ran out of output space. Request fewer artifacts or increase the output limit in Settings.')
+        raise HTTPException(502, f'The model ran out of output space ({config.output_tokens:,} tokens, including reasoning where applicable). Increase Maximum output in Settings or request fewer artifacts.')
     if status in {'failed', 'cancelled'} or payload.get('errors'):
         raise HTTPException(502, 'Gemini could not complete the response. No project changes were applied.')
     texts = []
@@ -122,7 +123,7 @@ def _extract_chat_completion(payload: dict, config: ProviderConfig):
         raise HTTPException(502, 'The provider declined this request. No project changes were applied; revise the task or use manual BA work.')
     finish = choice.get('finish_reason')
     if finish in {'length', 'max_tokens'}:
-        raise HTTPException(502, 'The model ran out of output space. Request fewer artifacts or increase the output limit in Settings.')
+        raise HTTPException(502, f'The model ran out of output space ({config.output_tokens:,} tokens, including reasoning where applicable). Increase Maximum output in Settings or request fewer artifacts.')
     if finish == 'content_filter':
         raise HTTPException(502, 'The provider stopped this response for safety review. No project changes were applied.')
     usage = payload.get('usage') or {}
@@ -151,7 +152,10 @@ class ModelProvider:
         self.config = config
 
     async def complete(self, messages: list[dict], schema: dict | None = None):
-        cfg = self.config
+        cfg = await resolve_config(self.config)
+        safety = max(256, (cfg.context_tokens + 99) // 100)
+        if request_tokens(messages, schema) + cfg.output_tokens + safety > cfg.context_tokens:
+            raise HTTPException(422, 'This AI request exceeds the estimated context budget after reserving output space. Increase context capacity in Settings or reduce the supplied material.')
         if cfg.provider == 'ollama':
             url = cfg.base_url + '/api/chat'
             headers = {}
@@ -164,6 +168,9 @@ class ModelProvider:
             if not key:
                 raise HTTPException(409, 'Add your provider key in Settings before starting an AI task.')
             url = REMOTE_ENDPOINTS[cfg.provider]
+            # Gemini's moving aliases are exposed by the beta Interactions API.
+            if cfg.provider == 'gemini' and cfg.model.endswith('-latest'):
+                url = 'https://generativelanguage.googleapis.com/v1beta/interactions'
             headers = {'x-goog-api-key': key} if cfg.provider == 'gemini' else {'Authorization': f'Bearer {key}'}
             if cfg.provider == 'openai':
                 body = _openai_request(cfg, messages, schema)
@@ -185,7 +192,7 @@ class ModelProvider:
                     'provider': 'ollama',
                 }
                 if payload.get('done_reason') in {'length', 'max_tokens'}:
-                    raise HTTPException(502, 'The model ran out of output space. Request fewer artifacts or increase the output limit in Settings.')
+                    raise HTTPException(502, f'The model ran out of output space ({cfg.output_tokens:,} tokens). Increase Maximum output in Settings or request fewer artifacts.')
             elif cfg.provider == 'openai':
                 result = _extract_openai(payload, cfg)
             elif cfg.provider == 'gemini':

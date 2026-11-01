@@ -1,0 +1,74 @@
+[
+  {
+    "stage": "Setup",
+    "width": 500,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Discover",
+    "width": 500,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Clarify",
+    "width": 500,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Define",
+    "width": 500,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Validate",
+    "width": 500,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Approve",
+    "width": 500,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Setup",
+    "width": 1280,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Discover",
+    "width": 1280,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Clarify",
+    "width": 1280,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Define",
+    "width": 1280,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Validate",
+    "width": 1280,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  },
+  {
+    "stage": "Approve",
+    "width": 1280,
+    "pageOverflow": [],
+    "unnamedFields": 0
+  }
+]

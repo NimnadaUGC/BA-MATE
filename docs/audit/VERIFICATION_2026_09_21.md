@@ -22,7 +22,7 @@ The route set was overview, goals, workflow, conversations, sources, artifacts, 
 
 ## Isolation and reproducibility
 
-Build and local workspace were placed under `BA_MATE/tmp/audit-2026-09-20/`, separate from the normal participant workspace. The loopback server used port 8769. The audit did not intentionally mutate application runtime sources or the normal workspace. Temporary diagnostic probes were kept outside the standard test suites because they assert current defects and must not be mistaken for corrected-behaviour regression tests.
+Build and local workspace were placed under `BA-MATE/tmp/audit-2026-09-20/`, separate from the normal participant workspace. The loopback server used port 8769. The audit did not intentionally mutate application runtime sources or the normal workspace. Temporary diagnostic probes were kept outside the standard test suites because they assert current defects and must not be mistaken for corrected-behaviour regression tests.
 
 Durable evidence is under [evidence](evidence/README.md): diagnostic output, action output, route result summary, screenshots and source hashes. Hashes identify inspected code; they are not signed attestations. Temporary browser scripts and fixture files remain in the isolated audit folder for developer reproduction.
 

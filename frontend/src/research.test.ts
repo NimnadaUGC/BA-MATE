@@ -1,3 +1,4 @@
+import { pinSyntheticSources } from "./testSourceFixtures";
 import { describe, expect, it } from "vitest";
 import { buildModelRequest } from "./modelGateway";
 import { summarizeStageResearch } from "./research";
@@ -47,6 +48,7 @@ describe("research and model-readiness foundations", () => {
 
   it("keeps source text and conversation available for server-side context selection", () => {
     const project = freshState().projects[0];
+    pinSyntheticSources(project);
     project.sources[0].content = "Actual stakeholder evidence about exception handling";
     project.sources[0].approved = true;
     const request = buildModelRequest({ project, references: [], prompt: "Review the exceptions", task: "project-conversation", history: [{role: "user", content: "The escalation owner is the operations manager."}] });

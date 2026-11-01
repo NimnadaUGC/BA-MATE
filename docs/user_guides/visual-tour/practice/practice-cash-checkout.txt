@@ -1,0 +1,16 @@
+FICTIONAL BETA PRACTICE SOURCE
+This example contains no real customer or business data.
+
+Project: Practice Cash Checkout
+Purpose: Specify a small cash-only shop checkout.
+Stakeholders: Shop owner and cashier.
+
+The cashier enters the order total and cash tendered. The system calculates
+the change due. Card payments, refunds and stock management are out of scope.
+The shop owner must confirm whether a cash-change limit applies, the limit
+amount and the outcome when the limit would be exceeded.
+
+The cash-change limit is intentionally unresolved in this initial brief.
+Follow Guide 2 for the separate fictional stakeholder confirmation and
+the later controlled-change exercise. Do not treat training instructions
+as a real stakeholder's approval.

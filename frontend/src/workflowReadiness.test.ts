@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { freshState, revisionManifest, revisionOf } from "./store";
+import { pinSyntheticSources } from "./testSourceFixtures";
 import {
   canAdvanceStage,
   canCreateBaseline,
@@ -10,6 +11,7 @@ import {
 
 const freshGoalProject = () => {
   const project = freshState().projects[0];
+  pinSyntheticSources(project);
   const goal = project.goals[0];
   project.activeGoalId = goal.id;
   goal.status = "Active";
@@ -34,6 +36,19 @@ describe("governed workflow readiness", () => {
     goal.sourceIds = [project.sources[0].id];
     expect(stageReadiness(project).every((item) => item.complete)).toBe(true);
     expect(canAdvanceStage(project)).toBe(true);
+  });
+  it("blocks a stale selected source at setup, baseline and completion until reselected", () => {
+    const { project, goal } = freshGoalProject();
+    goal.sourceIds = [project.sources[0].id];
+    project.sources[0].sha256 = 'new-revision';
+    expect(stageReadiness(project, 'Setup').find(item => item.id === 'source-approved')?.complete).toBe(false);
+    expect(stageReadiness(project, 'Approve').find(item => item.id === 'source-revisions')?.complete).toBe(false);
+    goal.gate = 'Approve';
+    expect(canCreateBaseline(project)).toBe(false);
+    expect(canCompleteGoal(project, goal.id)).toBe(false);
+    goal.sourceRevisionPins![project.sources[0].id] = 'new-revision';
+    expect(stageReadiness(project, 'Setup').find(item => item.id === 'source-approved')?.complete).toBe(true);
+    expect(stageReadiness(project, 'Approve').find(item => item.id === 'source-revisions')?.complete).toBe(true);
   });
 
   it("requires blocking clarification answers before leaving Clarify", () => {
@@ -64,6 +79,32 @@ describe("governed workflow readiness", () => {
     expect(canCreateBaseline(project)).toBe(false);
   });
 
+  it("accepts an attached manual evidence link at Define while still requiring verification at Validate", () => {
+    const { project, goal } = freshGoalProject();
+    goal.gate = "Define";
+    project.requirements = [project.requirements[0]]; project.stories = [];
+    const requirement = project.requirements[0];
+    requirement.goalId = goal.id; requirement.sourceIds = []; requirement.fitCriteria = ["A measurable test"];
+    project.traceLinks = [{ id: "TR-manual", from: "PROJECT-BRIEF", to: requirement.id, relation: "supports", status: "Pending" }];
+    expect(stageReadiness(project).find(item => item.id === "evidence-linked")?.complete).toBe(true);
+    expect(stageReadiness(project, "Validate").find(item => item.id === "evidence-verified")?.complete).toBe(false);
+    project.traceLinks[0].status = "Broken";
+    expect(stageReadiness(project).find(item => item.id === "evidence-linked")?.complete).toBe(false);
+  });
+
+  it("does not let an implemented or unverified legacy change pass the completion gate", () => {
+    const { project, goal } = freshGoalProject();
+    goal.gate = "Approve";
+    project.changes = [{ id: "CR-legacy", title: "Old change", rationale: "", source: "", status: "Revalidated", impacts: [] }];
+    expect(stageReadiness(project).find(item => item.id === "changes-revalidated")?.complete).toBe(false);
+    expect(canCreateBaseline(project)).toBe(false);
+    project.changes[0].status = "Implemented";
+    expect(stageReadiness(project).find(item => item.id === "changes-revalidated")?.complete).toBe(false);
+    project.changes[0].status = "Impact review";
+    project.changes[0].patches = [{ id: "old", artifactId: project.requirements[0].id, artifactType: "Requirement", field: "statement", before: "before", after: "after", sourceRevision: 1, selected: true, status: "Applied" }];
+    expect(stageReadiness(project).find(item => item.id === "changes-revalidated")?.complete).toBe(false);
+  });
+
   it("does not allow a goal to complete merely because a later gate was selected", () => {
     const { project, goal } = freshGoalProject();
     goal.gate = "Validate";
@@ -73,6 +114,11 @@ describe("governed workflow readiness", () => {
 
   it("requires an approved baseline that contains the goal artifacts", () => {
     const { project, goal } = freshGoalProject();
+    project.requirements = [project.requirements[0]];
+    project.stories = []; project.diagrams = []; project.documents = []; project.clarifications = []; project.checks = []; project.changes = [];
+    const requirement = project.requirements[0]; requirement.status = "approved";
+    requirement.sourceIds = [project.sources[0].id];
+    project.traceLinks = [{id:"TR-current",from:project.sources[0].id,to:requirement.id,relation:"Supports",status:"Verified",fromRevision:revisionOf(project,project.sources[0].id),toRevision:requirement.version}];
     goal.gate = "Approve";
     goal.gateIndex = 5;
     project.versions = [];
@@ -96,12 +142,21 @@ describe("governed workflow readiness", () => {
         .map((item) => ({ id: item.id, type: "Requirement" as const, revision: item.version })),
     });
     expect(canCompleteGoal(project, goal.id)).toBe(true);
+    const revision = requirement.version;
+    requirement.status = "draft";
+    project.traceLinks[0].status = "Pending";
+    expect(requirement.version).toBe(revision);
+    expect(canCompleteGoal(project, goal.id)).toBe(false);
+    expect(stageReadiness(project, "Approve").find(item => item.id === "working-reviews-current")?.complete).toBe(false);
+    requirement.status = "approved"; project.traceLinks[0].status = "Verified";
+    expect(canCompleteGoal(project, goal.id)).toBe(true);
     project.requirements[0].version += 1;
     expect(canCompleteGoal(project, goal.id)).toBe(false);
   });
 
   it("completes three governed journeys without skipping a stage", () => {
     for (const project of freshState().projects) {
+      pinSyntheticSources(project);
       const goal = project.goals[0];
       project.activeGoalId = goal.id;
       goal.status = "Active";

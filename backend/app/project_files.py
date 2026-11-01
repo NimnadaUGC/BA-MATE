@@ -209,17 +209,34 @@ def write_project_files(workspace_id: str, request: ProjectFilesWrite) -> dict:
     written = []
     for item, data in decoded:
         relative = _safe_relative_path(item)
-        destination = _collision_safe_destination(root, relative if item.relative_path else Path('Uploaded Sources') / relative, data).resolve()
-        if not destination.is_relative_to(root):
-            raise HTTPException(422, 'A source path would leave the project folder.')
-        temporary = destination.with_name(f'.{destination.name}.{uuid.uuid4().hex}.tmp')
-        try:
-            temporary.write_bytes(data)
-            os.replace(temporary, destination)
-        except OSError as exc:
-            if temporary.exists():
-                temporary.unlink()
-            raise HTTPException(422, f'Could not copy {item.name} into the project folder.') from exc
+        relative = relative if item.relative_path else Path('Uploaded Sources') / relative
+        for attempt in range(1000):
+            destination = _collision_safe_destination(root, relative, data)
+            if not destination.resolve().is_relative_to(root):
+                raise HTTPException(422, 'A source path would leave the project folder.')
+            # A matching existing original is already materialized; never rewrite it.
+            if destination.exists():
+                try:
+                    if not destination.is_symlink() and destination.read_bytes() == data:
+                        break
+                except OSError as exc:
+                    raise HTTPException(422, f'Could not inspect existing file {item.name}.') from exc
+                continue
+            temporary = destination.with_name(f'.{destination.name}.{uuid.uuid4().hex}.tmp')
+            try:
+                temporary.write_bytes(data)
+                # Linking creates the visible name atomically only if it is still free.
+                # A competing writer can never be replaced by this operation.
+                os.link(temporary, destination)
+                break
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                raise HTTPException(422, f'Could not safely copy {item.name} into the project folder. Check that the folder supports local file links and is writable.') from exc
+            finally:
+                temporary.unlink(missing_ok=True)
+        else:
+            raise HTTPException(422, f'Too many concurrent copies of {item.name}; try again.')
         written.append(str(destination.relative_to(root)))
     return {'written': written, 'folder_name': root.name, 'kind': record['kind']}
 

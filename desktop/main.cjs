@@ -29,7 +29,7 @@ async function start() {
   let ready = false;
   for (let attempt = 0; attempt < 120; attempt++) {
     if (failure) throw new Error(failure);
-    try { const response = await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(500) }); if (response.ok && (await response.json()).version === '0.4.0') { ready = true; break; } } catch {}
+    try { const response = await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(500) }); if (response.ok && (await response.json()).version === require('./package.json').version) { ready = true; break; } } catch {}
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   if (!ready) throw new Error('The local service did not become ready. Check that the application package contains its service and frontend.');

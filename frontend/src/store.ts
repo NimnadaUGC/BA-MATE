@@ -9,10 +9,12 @@ import type {
   ConversationContext,
   DocumentBlock,
   Project,
+  TraceLink,
   VersionSnapshot,
   WorkspaceState,
 } from "./types";
 import { seedState } from "./data";
+import { staleGoalSourceIds } from "./sourceScope";
 
 const STORAGE_KEY = "ba-mate-workspace-v2";
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -99,7 +101,9 @@ export const migrateWorkspace = (input: unknown): WorkspaceState => {
         ...project.documents,
         ...project.changes,
       ];
-      owned.forEach((artifact) => {
+      // Only legacy single-goal workspaces have an unambiguous owner. A later
+      // active goal must not silently claim previously unassigned records.
+      if (sourceSchemaVersion < 5 && project.goals.length === 1) owned.forEach((artifact) => {
         artifact.goalId ??= project.activeGoalId;
       });
       const goal = project.goals.find(
@@ -109,7 +113,7 @@ export const migrateWorkspace = (input: unknown): WorkspaceState => {
         goal.deliverables = [
           ...new Set([
             ...goal.deliverables,
-            ...owned.map((artifact) => artifact.id),
+            ...owned.filter((artifact) => artifact.goalId === goal.id).map((artifact) => artifact.id),
           ]),
         ];
     }
@@ -221,18 +225,26 @@ export class IndexedDbWorkspaceRepository implements WorkspaceRepository {
   }
   async exportProject(project: Project) {
     const zip = new JSZip();
-    zip.file("ba-mate-project.json", JSON.stringify({ format: "ba-mate-project", formatVersion: 3, schemaVersion: 7, exportedAt: new Date().toISOString(), project }, null, 2));
+    // Version 4 prevents older importers from silently accepting relationships
+    // whose multiple passage pins they do not understand.
+    zip.file("ba-mate-project.json", JSON.stringify({ format: "ba-mate-project", formatVersion: 4, schemaVersion: 8, exportedAt: new Date().toISOString(), project }, null, 2));
     return zip.generateAsync({ type: "blob" });
   }
   async importProject(file: File) {
     if (file.size > 150 * 1024 * 1024) throw new Error("Project package exceeds 150 MB.");
-    const zip = await JSZip.loadAsync(file);
+    let zip: JSZip;
+    try { zip = await JSZip.loadAsync(file); }
+    catch { throw new Error("This file is not a valid project backup ZIP. Choose a BA Mate project backup and try again."); }
     const entry = zip.file("ba-mate-project.json");
     if (!entry) throw new Error("This legacy package cannot be restored completely. Open the original workspace and export it with BA Mate 0.4 first.");
     const text = await entry.async("string");
     if (text.length > 200 * 1024 * 1024) throw new Error("Expanded project exceeds the import limit.");
-    const data = JSON.parse(text);
-    if (data.format !== "ba-mate-project" || ![2, 3].includes(data.formatVersion) || ![6, 7].includes(data.schemaVersion) || !data.project || typeof data.project.name !== "string") throw new Error("Unsupported or invalid BA Mate project package.");
+    let data;
+    try { data = JSON.parse(text); }
+    catch { throw new Error("The project data in this backup is damaged or invalid. Nothing was imported."); }
+    if (data?.format === "ba-mate-project" && (data.formatVersion > 4 || data.schemaVersion > 8)) throw new Error("This backup was created by a newer BA Mate version. Update BA Mate before restoring it.");
+    const supportedVersion = ([2, 3].includes(data?.formatVersion) && [6, 7].includes(data?.schemaVersion)) || (data?.formatVersion === 4 && data?.schemaVersion === 8);
+    if (!data || typeof data !== "object" || data.format !== "ba-mate-project" || !supportedVersion || !data.project || typeof data.project.name !== "string") throw new Error("Unsupported or invalid BA Mate project package.");
     const project = data.project as Project;
     for (const key of ["sources", "requirements", "stories", "registers", "traceLinks", "checks", "diagrams", "documents", "changes", "audit", "versions", "clarifications", "conversations", "members", "goals"] as const) {
       if (!Array.isArray(project[key])) throw new Error(`Project package is missing ${key}; nothing was imported.`);
@@ -240,7 +252,7 @@ export class IndexedDbWorkspaceRepository implements WorkspaceRepository {
     project.id = `imported-${crypto.randomUUID()}`;
     project.cloudAllowed = false;
     addAudit(project, "Imported project package", project.id, "Project records, history and baselines restored. Sources without retained originals require review. External processing disabled on this device.");
-    return migrateWorkspace({ schemaVersion: 7, projects: [project], evaluationRuns: [], telemetryEvents: [], stageFeedback: [] }).projects[0];
+    return migrateWorkspace({ schemaVersion: data.schemaVersion, projects: [project], evaluationRuns: [], telemetryEvents: [], stageFeedback: [] }).projects[0];
   }
 }
 
@@ -290,6 +302,17 @@ export const addAudit = (
   project.audit = [event, ...project.audit];
 };
 
+/** Preserve unsaved project records even if source files or the service are unavailable. */
+export function recordsOnlyRecoveryProject(project: Project): Project {
+  const recovery = clone(project);
+  recovery.name = `${project.name} — recovered records`;
+  recovery.sources.forEach(source => { source.originalBase64 = undefined; });
+  recovery.cloudAllowed = false;
+  addAudit(recovery, "Created records-only recovery copy", recovery.id,
+    "Project records were recovered without original source files. Reattach and review sources after restore.");
+  return recovery;
+}
+
 export const canApprove = (project: Project, memberId = "MEM-01") =>
   project.members.some(
     (member) =>
@@ -315,7 +338,9 @@ const supportedArtifactCount = (project: Project, goalId?: string, onlyId?: stri
     if (evidence.has(id)) return true;
     if (seen.has(id)) return false;
     const next = new Set(seen).add(id);
-    return project.traceLinks.some(link => link.to === id && link.status === "Verified" && supported(link.from, next));
+    return project.traceLinks.some(link => {
+      return link.to === id && link.status === "Verified" && link.fromRevision === revisionOf(project, link.from) && link.toRevision === revisionOf(project, link.to) && sourcePassageCurrent(project, link) && supported(link.from, next);
+    });
   };
   return artifacts.filter(a => supported(a.id)).length;
 };
@@ -340,6 +365,17 @@ export const safeEvaluationExport = (state: WorkspaceState) =>
 
 export const governanceCanDisable = (check: { immutable?: boolean }) =>
   !check.immutable;
+
+/** Record only the rationale actually supplied by the analyst. */
+export function recordGovernanceDisposition(project: Project, id: string, status: "Passed" | "Not applicable", rationale: string) {
+  const check = project.checks.find(item => item.id === id);
+  if (!check) throw new Error("The governance check no longer exists.");
+  if (!rationale.trim()) throw new Error("Enter a rationale before recording this decision.");
+  if (status === "Not applicable" && !governanceCanDisable(check)) throw new Error("This core safeguard cannot be marked not applicable.");
+  check.status = status;
+  check.resolution = rationale.trim();
+  addAudit(project, status === "Passed" ? "Resolved governance check" : "Marked check not applicable", id, check.resolution);
+}
 export const impactedIds = (project: Project, changeId: string) =>
   project.changes
     .find((change) => change.id === changeId)
@@ -407,10 +443,18 @@ export function revisionOf(project: Project, id: string): number {
   return item?.version ?? 1;
 }
 
-const artifactExists = (project: Project, id: string) => id === "PROJECT-BRIEF" || [
+export const sourcePassagePins = (link: TraceLink) => [...(link.sourcePassage ? [link.sourcePassage] : []), ...(link.sourcePassages ?? [])];
+export function sourcePassageCurrent(project: Project, link: TraceLink): boolean {
+  return sourcePassagePins(link).every(pin => {
+    const source = project.sources.find(item => item.id === pin.sourceId);
+    return !!source && (link.from === source.id || link.to === source.id) && revisionOf(project, source.id) === pin.sourceRevision && (source.passages ?? []).filter(item => item.locator === pin.locator).length === 1;
+  });
+}
+
+const artifactExists = (project: Project, id: string) => id === "PROJECT-BRIEF" || id === "PROJECT-GOVERNANCE" || [
   ...project.sources, ...project.clarifications, ...project.requirements,
   ...project.stories, ...project.registers, ...project.checks,
-  ...project.diagrams, ...project.documents, ...project.changes,
+  ...project.diagrams, ...project.documents, ...project.changes, ...project.goals,
 ].some(item => item.id === id);
 
 export const revisionManifest = (project: Project, goalId = scopeId(project)): ArtifactRevisionReference[] =>
@@ -425,14 +469,14 @@ const staleDiagramEmbed = (document: Project["documents"][number], project: Proj
     !!block.embedding && (block.embedding.stale || revisionOf(project, block.embedding.diagramId) !== block.embedding.version),
   ));
 
-export const approvalIssuesForArtifact = (project: Project, id: string): string[] => {
-  const artifact = governedArtifacts(project).find(item => item.id === id);
+export const approvalIssuesForArtifact = (project: Project, id: string, goalId = scopeId(project)): string[] => {
+  const artifact = governedArtifacts(project, goalId).find(item => item.id === id);
   if (!artifact) return ["The artifact is outside the active approval scope."];
   const issues: string[] = [];
   if (!canApprove(project)) issues.push("An active member with approval authority is required.");
-  if (blockers(project, scopeId(project))) issues.push("Resolve blocking clarifications and governance findings in this scope.");
+  if (blockers(project, goalId)) issues.push("Resolve blocking clarifications and governance findings in this scope.");
   if (project.requirements.some(item => item.id === id) || project.stories.some(item => item.id === id)) {
-    if (!supportedArtifactCount(project, scopeId(project), id)) issues.push("Verify a current evidence path before approval.");
+    if (!supportedArtifactCount(project, goalId, id)) issues.push("Verify a current evidence path before approval.");
   }
   const requirement = project.requirements.find(item => item.id === id);
   if (requirement && !requirement.fitCriteria.some(criterion => criterion.trim())) issues.push("Add at least one testable acceptance criterion before approval.");
@@ -447,17 +491,28 @@ export const approvalIssuesForArtifact = (project: Project, id: string): string[
     issues.push("Refresh or remove stale embedded diagrams before approval.");
   }
   if (project.traceLinks.some(link => (link.from === id || link.to === id) && link.status === "Verified" &&
-    (link.fromRevision !== revisionOf(project, link.from) || link.toRevision !== revisionOf(project, link.to)))) {
+    (link.fromRevision !== revisionOf(project, link.from) || link.toRevision !== revisionOf(project, link.to) || !sourcePassageCurrent(project, link)))) {
     issues.push("Reverify trace links against the current artifact revisions before approval.");
+  }
+  if (project.traceLinks.some(link => (link.from === id || link.to === id) && (!artifactExists(project, link.from) || !artifactExists(project, link.to)))) {
+    issues.push("Resolve trace links with missing records before approval.");
   }
   if (project.traceLinks.some(link => (link.from === id || link.to === id) && link.status === "Pending")) {
     issues.push("Resolve pending trace links before approval.");
+  }
+  if (project.traceLinks.some(link => (link.from === id || link.to === id) && link.status === "Broken")) {
+    issues.push("Resolve broken trace links before approval.");
   }
   return issues;
 };
 
 export const baselineIssues = (project: Project, goalId = scopeId(project)): string[] => {
   const issues: string[] = [];
+  const goal = project.goals.find(item => item.id === goalId);
+  if (goal) {
+    const stale = staleGoalSourceIds(project, goal);
+    if (stale.length) issues.push(`Review and reselect current source revisions for this goal: ${stale.join(', ')}.`);
+  }
   if (!canApprove(project)) issues.push('An active member with approval authority is required.');
   if (blockers(project, goalId)) issues.push('Resolve blocking clarifications and governance findings.');
   const artifacts = [...project.requirements.filter(item => inScope(item, goalId)), ...project.stories.filter(item => inScope(item, goalId))];
@@ -469,7 +524,7 @@ export const baselineIssues = (project: Project, goalId = scopeId(project)): str
   if (documents.some(document => staleDiagramEmbed(document, project))) issues.push('Refresh or remove stale embedded diagrams before approval.');
   if (artifacts.length && supportedArtifactCount(project, goalId) !== artifacts.length) issues.push('Verify an evidence path for every requirement and user story.');
   for (const artifact of governedArtifacts(project, goalId)) {
-    const approvalIssues = approvalIssuesForArtifact(project, artifact.id);
+    const approvalIssues = approvalIssuesForArtifact(project, artifact.id, goalId);
     for (const issue of approvalIssues) {
       const normalized = issue.includes('current artifact revisions') ? 'Reverify trace links against current artifact revisions.'
         : issue.includes('pending trace links') ? 'Resolve pending trace links before approval.'
@@ -532,7 +587,19 @@ export function enforceWorkingVersions(before: Project, after: Project) {
     const newById = new Map(newItems.map(item => [item.id, item]));
     for (const id of new Set([...oldById.keys(), ...newById.keys()])) {
       const oldItem = oldById.get(id), newItem = newById.get(id);
-      if (!oldItem || !newItem || content(oldItem) !== content(newItem)) {
+      // A check's resolution is a review decision, not an edit to the check
+      // itself. The decision is preserved in the audit log; editing the check
+      // or its dependencies still invalidates a previous Passed status.
+      const comparable = (item: { id: string } | undefined) => item && (key === "checks" || key === "sources")
+        ? content(Object.fromEntries(Object.entries(item).filter(([field]) => key === "checks" ? field !== "resolution" : !["analysisSignature", "originalBase64"].includes(field))))
+        : content(item);
+      const oldSource = key === "sources" ? oldItem as Project["sources"][number] | undefined : undefined;
+      const newSource = key === "sources" ? newItem as Project["sources"][number] | undefined : undefined;
+      const embeddedBytesChanged = !!oldSource?.originalBase64 && (
+        newSource?.originalBase64 ? oldSource.originalBase64 !== newSource.originalBase64
+          : !(after.workspaceId && (after.workspaceKind === "managed" || after.workspaceKind === "selected") && newSource?.relativePath)
+      );
+      if (!oldItem || !newItem || embeddedBytesChanged || comparable(oldItem) !== comparable(newItem)) {
         changed.add(id);
         if (oldItem && newItem && "version" in newItem && (newItem.version ?? 1) <= revisionOf(before, id)) newItem.version = revisionOf(before, id) + 1;
       }
@@ -542,9 +609,11 @@ export function enforceWorkingVersions(before: Project, after: Project) {
   const afterLinks = new Map(after.traceLinks.map(link => [link.id, link]));
   for (const id of new Set([...beforeLinks.keys(), ...afterLinks.keys()])) {
     const oldLink = beforeLinks.get(id), newLink = afterLinks.get(id);
-    if (!oldLink || !newLink || content(oldLink) !== content(newLink)) {
-      if (oldLink) { changed.add(oldLink.from); changed.add(oldLink.to); }
-      if (newLink) { changed.add(newLink.from); changed.add(newLink.to); }
+    // Editing a relationship affects its destination, not the source content.
+    // Verification stamps and status are review decisions, not relationship edits.
+    if (!oldLink || !newLink || oldLink.from !== newLink.from || oldLink.to !== newLink.to || oldLink.relation !== newLink.relation || JSON.stringify(sourcePassagePins(oldLink)) !== JSON.stringify(sourcePassagePins(newLink))) {
+      if (oldLink) changed.add(oldLink.to);
+      if (newLink) changed.add(newLink.to);
     }
   }
   // Detect all direct edits first, then propagate them across declared

@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from . import runtime
 from .contracts import RunRequest
 from .workflow import execute
+from .token_management import resolve_config
 
 TASK_PROMPTS = {
     'clarify': 'Identify one material gap in the synthetic leave-request rule.',
@@ -40,7 +41,7 @@ def device_memory_mb():
         return None
 
 async def qualify_profile():
-    cfg = runtime.config.model_copy(deep=True)
+    cfg = await resolve_config(runtime.config.model_copy(deep=True))
     results = []
     for task, prompt in TASK_PROMPTS.items():
         started = time.monotonic()
@@ -66,7 +67,8 @@ async def qualify_profile():
     report = {
         'report_version': 1, 'at': datetime.now(timezone.utc).isoformat(),
         'profile': {'provider': cfg.provider, 'model': cfg.model, 'base_url': cfg.base_url, 'temperature': cfg.temperature,
-                    'context_tokens': cfg.context_tokens, 'output_tokens': cfg.output_tokens, 'timeout_seconds': cfg.timeout_seconds},
+                    'context_tokens': cfg.context_tokens, 'context_mode': cfg.context_mode,
+                    'output_tokens': cfg.output_tokens, 'timeout_seconds': cfg.timeout_seconds},
         'framework_version': runtime.FRAMEWORK_VERSION, 'prompt_version': runtime.PROMPT_VERSION,
         'device': {'platform': platform.platform(), 'physical_memory_mb': device_memory_mb(), 'accelerator_memory_mb': None,
                    'accelerator_memory_note': 'Not detected by this local service; record it manually if relevant to the study.'},
@@ -87,15 +89,24 @@ def record_human_review(reviews, approved_for_pilot):
     if not report:
         raise HTTPException(404, 'Run the synthetic qualification before recording human review.')
     by_task = {entry['task']: entry for entry in reviews}
+    if len(by_task) != len(reviews):
+        raise HTTPException(400, 'Each task may be reviewed only once per submission.')
+    available = {result['task']: result for result in report['results']}
+    for task in by_task:
+        result = available.get(task)
+        if not result or result.get('status') != 'passed' or result.get('synthetic_proposal') is None:
+            raise HTTPException(400, 'Only a passing task with a saved synthetic proposal can be reviewed.')
     for result in report['results']:
         review = by_task.get(result['task'])
         if review:
             result['human_corrections'] = review['correction_count']
             result['human_reviewed'] = True
+            result['review_flow_version'] = 1
     report['qualified_for_pilot'] = bool(
         approved_for_pilot
         and report.get('structured_tasks_passed')
-        and all(result.get('human_reviewed') for result in report['results'])
+        and bool(report['results'])
+        and all(result.get('human_reviewed') and result.get('review_flow_version') == 1 and result.get('status') == 'passed' and result.get('synthetic_proposal') is not None for result in report['results'])
     )
     report['human_reviewed_at'] = datetime.now(timezone.utc).isoformat()
     runtime.save_qualification(report)

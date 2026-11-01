@@ -1,0 +1,2273 @@
+[
+  {
+    "stage": "Welcome / read this first",
+    "title": "BA Mate: your first guided project",
+    "subtitle": "Actual 1440 x 1000 desktop screenshots / browser edition / 1.0.0-beta.3 / 1 November 2026",
+    "shot": null,
+    "steps": [
+      [
+        "Start with the picture",
+        "Read the practice case next, then follow the numbered screenshots. Purple numbers on a screen match the instructions below it."
+      ],
+      [
+        "Connect and create",
+        "Set up an AI provider, create a project, add the fictional source and define one goal. Your provider connection and project permission are separate."
+      ],
+      [
+        "Discover and define",
+        "Review the extraction, name a stakeholder, confirm the missing rule and turn reviewed AI suggestions into drafts."
+      ],
+      [
+        "Validate and approve",
+        "Check criteria, evidence, diagrams and the SRS. Complete Validate, record B1 and keep the goal active for the change exercise."
+      ],
+      [
+        "Change and finish",
+        "Change the limit from 500 to 300, implement reviewed patches, revalidate, record B2 and complete the goal. Export a backup."
+      ],
+      [
+        "Explore the toolbox",
+        "Later pages cover chat, roles, stories, all five registers, document tools, templates, recent work, built-in help and study status."
+      ]
+    ],
+    "result": "Main example: Practice Cash Checkout. The separate setup rehearsal illustrates early steps and optional tools. Generated IDs differ between projects; follow the item names and meaning. Every confirmation and approver in this guide is simulated.",
+    "pins": []
+  },
+  {
+    "stage": "Navigation / clickable contents",
+    "title": "Choose your route through the guide",
+    "subtitle": "Read the core route in order; return to the optional tools when you need them.",
+    "shot": null,
+    "steps": [
+      [
+        "Connect and create / 4-15",
+        "Settings, local setup, model limits, display preferences, qualification, project creation, goals and source review."
+      ],
+      [
+        "Discover and define / 16-20",
+        "Stakeholders, confirmed answers, focused API tasks, selected drafts and measurable criteria."
+      ],
+      [
+        "Validate and approve / 21-32",
+        "Current evidence, controlled SRS creation, process review, document review, safeguards and B1."
+      ],
+      [
+        "Change, finish and recover / 33-44",
+        "The 500-to-300 change, patches, refreshed dependencies, B2, goal completion, exports and project backup/restore."
+      ],
+      [
+        "Use the optional toolbox / 45-61",
+        "Saved chat, mentions, quick assistant, roles, stories, API impact/document drafts, registers and document/diagram tools."
+      ],
+      [
+        "Find help and understand limits / 62-65",
+        "Recent work, built-in help, the observed study-service state and a practical troubleshooting map."
+      ]
+    ],
+    "result": "Use PDF bookmarks or click a card. In the offline gallery, use chapter links or search. Screen numbers correspond to the instructions immediately below each screenshot.",
+    "pins": [],
+    "links": [
+      4,
+      16,
+      21,
+      33,
+      45,
+      62
+    ]
+  },
+  {
+    "stage": "Practice case / keep beside you",
+    "title": "One checkout, two reviewed baselines",
+    "subtitle": "Use the supplied practice-cash-checkout.txt. There is no real customer, business or participant data.",
+    "shot": null,
+    "steps": [
+      [
+        "The starting brief",
+        "Cashier enters order total and cash tendered. Checkout calculates change. The source deliberately leaves the limit undecided. Cards, refunds and stock are excluded."
+      ],
+      [
+        "B1: confirm 500",
+        "Simulated shop owner confirms: maximum change 500 units. Above 500, block completion and ask the cashier to request a smaller cash amount."
+      ],
+      [
+        "B2: change to 300",
+        "A later simulated decision lowers the maximum to 300. Keep the same blocked outcome, then review all affected records before a second approval."
+      ],
+      [
+        "Test the boundary",
+        "B1: total 100 / cash 600 gives change 500, allowed by this rule; cash 601 gives 501, blocked. B2: cash 400 gives 300, allowed; cash 401 gives 301, blocked."
+      ]
+    ],
+    "result": "This is a narrow analysis example, not a checkout implementation. Approval records human review of the BA artifacts. They do not prove a software checkout was built or tested.",
+    "pins": []
+  },
+  {
+    "stage": "Orientation / Projects",
+    "title": "Find your project and recognise its state",
+    "subtitle": "Global navigation / Projects",
+    "shot": "38-projects.jpg",
+    "steps": [
+      [
+        "Open a workspace",
+        "Select the project card or its entry in the left navigation. Each project keeps its own sources, goals and analysis records."
+      ],
+      [
+        "Read the indicators",
+        "A stage, evidence percentage and blocker count help you find work. Evidence coverage does not establish business quality."
+      ],
+      [
+        "Keep practice separate",
+        "Use New project for the exercise. A restored copy is a separate project; the setup rehearsal is an optional authoring demonstration."
+      ]
+    ],
+    "result": "The original completed project, its restored copy and the separate setup rehearsal have distinct cards.",
+    "pins": [
+      [
+        0.05,
+        0.095
+      ],
+      [
+        0.45,
+        0.38
+      ],
+      [
+        0.92,
+        0.19
+      ]
+    ]
+  },
+  {
+    "stage": "Connect / Settings",
+    "title": "Connect OpenRouter before running a task",
+    "subtitle": "Global navigation / Settings / AI connection",
+    "shot": "00-settings.jpg",
+    "steps": [
+      [
+        "Choose the profile",
+        "Select OpenRouter and enter your assigned model identifier. The illustrated profile is google/gemini-2.5-flash-lite."
+      ],
+      [
+        "Use your own key",
+        "Paste an OpenRouter key into its key field, then Save and test connection. A blank field can retain a key already in this service session."
+      ],
+      [
+        "Check the result",
+        "Look for the connection result. Keys entered here stay in service memory until it closes; do not put them in source files or messages."
+      ]
+    ],
+    "result": "Connection updated reports the configured provider/model. A successful connection is the first check; synthetic qualification is separate.",
+    "pins": [
+      [
+        0.18,
+        0.26
+      ],
+      [
+        0.72,
+        0.33
+      ],
+      [
+        0.25,
+        0.73
+      ]
+    ]
+  },
+  {
+    "stage": "Connect / optional local setup",
+    "title": "Use an installed local model instead",
+    "subtitle": "Settings / Provider / Local or organisation Ollama",
+    "shot": "47-local-model-setup.jpg",
+    "steps": [
+      [
+        "Prepare Ollama",
+        "Start Ollama and download a model your computer can support. The app shows a qwen3:8b download example."
+      ],
+      [
+        "Match the model name",
+        "Enter the installed model identifier and Ollama address. The usual local address shown here is http://127.0.0.1:11434."
+      ],
+      [
+        "Save and test",
+        "Choose Save and test connection. Local inference does not require the project external-processing checkbox; hardware and model capacity still matter."
+      ]
+    ],
+    "result": "This screenshot shows an unsaved local setup illustration. The main walkthrough uses the connected OpenRouter profile; the first rehearsal also exercised local inference.",
+    "pins": [
+      [
+        0.2,
+        0.45
+      ],
+      [
+        0.63,
+        0.53
+      ],
+      [
+        0.26,
+        0.84
+      ]
+    ]
+  },
+  {
+    "stage": "Connect / model capacity",
+    "title": "Understand the task budget",
+    "subtitle": "Settings / Advanced model limits",
+    "shot": "46-model-limits.jpg",
+    "steps": [
+      [
+        "Choose a budget",
+        "Use the available model capacity or a smaller manual budget. The screenshot records the capacity reported during this run."
+      ],
+      [
+        "Check output and timeout",
+        "The maximum output allowance and request timeout affect completion. A large context window does not guarantee a useful answer."
+      ],
+      [
+        "Review included evidence",
+        "Each task and chat request can disclose what was included or left out. Check this receipt when a model misses relevant context."
+      ]
+    ],
+    "result": "Settings shows the selected context budget, output allowance and timeout. Limits and model availability can differ for another profile.",
+    "pins": [
+      [
+        0.2,
+        0.48
+      ],
+      [
+        0.56,
+        0.72
+      ],
+      [
+        0.28,
+        0.83
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / display preferences",
+    "title": "Make the workspace comfortable to read",
+    "subtitle": "Global navigation / Settings / Accessibility & display",
+    "shot": "61-display-preferences.jpg",
+    "steps": [
+      [
+        "Reduce unnecessary motion",
+        "The Reduce motion switch disables non-essential transitions and animations. Preferences apply immediately on this device."
+      ],
+      [
+        "Adjust spacing",
+        "Comfortable density adds space around navigation and editor controls. Choose what helps you read and operate the interface."
+      ],
+      [
+        "Keep data actions distinct",
+        "Export local backup is a workspace-level action. For the illustrated recoverable project ZIP use the specific Project backup controls lower down."
+      ]
+    ],
+    "result": "This screenshot shows the display controls; preferences were not changed during capture.",
+    "pins": [
+      [
+        0.89,
+        0.346
+      ],
+      [
+        0.89,
+        0.419
+      ],
+      [
+        0.88,
+        0.175
+      ]
+    ]
+  },
+  {
+    "stage": "Connect / qualification",
+    "title": "Check compatibility before a formal pilot",
+    "subtitle": "Settings / Run synthetic qualification",
+    "shot": "45-qualification.jpg",
+    "steps": [
+      [
+        "Run the fixed example",
+        "The qualification uses a synthetic leave-request case, rather than your project content, to exercise the supported task formats."
+      ],
+      [
+        "Inspect every proposal",
+        "Expand View synthetic proposal for each passing task. Compare the answer with that task and the confirmed rule."
+      ],
+      [
+        "Record a real review",
+        "Enter correction counts under the assigned scoring protocol before human approval. Leave this to the study protocol when you are a participant."
+      ]
+    ],
+    "result": "All six tasks passed structured-response checks in this run. Human review remained required; this result does not establish BA quality or model equivalence.",
+    "pins": [
+      [
+        0.54,
+        0.37
+      ],
+      [
+        0.27,
+        0.69
+      ],
+      [
+        0.25,
+        0.75
+      ]
+    ]
+  },
+  {
+    "stage": "Setup / project creation",
+    "title": "1. Give the project a clear name",
+    "subtitle": "Projects / New project / Define the project",
+    "shot": "01-new-project.jpg",
+    "steps": [
+      [
+        "Name the example",
+        "Use Practice Cash Checkout for the main exercise. A descriptive name helps you distinguish your real projects and rehearsals."
+      ],
+      [
+        "Choose a foundation",
+        "This tour uses Blank. Other templates supply a starting structure and safeguards; review their suitability for your work."
+      ],
+      [
+        "Continue deliberately",
+        "Continue opens the knowledge-base step. Describe to BA Mate can propose a foundation if you need help choosing one."
+      ]
+    ],
+    "result": "The first step records the name and selected foundation. The highlighted Blank card is the choice in this example.",
+    "pins": [
+      [
+        0.23,
+        0.3
+      ],
+      [
+        0.21,
+        0.74
+      ],
+      [
+        0.77,
+        0.94
+      ]
+    ]
+  },
+  {
+    "stage": "Setup / project files",
+    "title": "2. Add the fictional source material",
+    "subtitle": "Project creation / Build the knowledge base",
+    "shot": "02-import-brief.jpg",
+    "steps": [
+      [
+        "Choose the workspace",
+        "Keep the new managed folder or choose an existing directory. The app copies uploaded originals into the project workspace."
+      ],
+      [
+        "Browse for the brief",
+        "Add practice-cash-checkout.txt. Check the destination folder and queued item name before continuing."
+      ],
+      [
+        "Keep extraction in mind",
+        "Readable documents and tables can yield text. Image, audio and video originals can be preserved without providing OCR or transcription."
+      ]
+    ],
+    "result": "The brief is queued for analysis. Uploading a file does not yet make its claims approved goal evidence.",
+    "pins": [
+      [
+        0.23,
+        0.39
+      ],
+      [
+        0.24,
+        0.58
+      ],
+      [
+        0.23,
+        0.82
+      ]
+    ]
+  },
+  {
+    "stage": "Setup / safeguards",
+    "title": "3. Review governance before creation",
+    "subtitle": "Project creation / Review governance & create",
+    "shot": "02b-project-governance.jpg",
+    "steps": [
+      [
+        "Check the summary",
+        "Confirm the project, template and uploaded source count. Revisit earlier steps if the selected material is wrong."
+      ],
+      [
+        "Review the policy pack",
+        "Core policies are locked. Additional policies should reflect the project; AI proposals still require your review."
+      ],
+      [
+        "Create locally",
+        "Choose Create local project. Extraction and background suggestions may continue after the workspace is created."
+      ]
+    ],
+    "result": "The workspace is created locally with its source queue and selected safeguards. No stakeholder approval has been inferred.",
+    "pins": [
+      [
+        0.23,
+        0.43
+      ],
+      [
+        0.21,
+        0.68
+      ],
+      [
+        0.79,
+        0.94
+      ]
+    ]
+  },
+  {
+    "stage": "Setup / goal",
+    "title": "4. Define one outcome and its boundaries",
+    "subtitle": "First project opening / Create a project goal",
+    "shot": "03-start-goal.jpg",
+    "steps": [
+      [
+        "Choose the goal type",
+        "Start from new material suits this initial discovery. Other goal types support existing specifications, addenda and separate deliverables."
+      ],
+      [
+        "State the outcome",
+        "Name the cash-change rule goal. Describe the requirement, diagram and SRS you intend to review; exclude cards, refunds and stock. Fill the description if still blank."
+      ],
+      [
+        "Start this goal",
+        "Only reviewed source revisions can be selected as evidence. If none are ready, start and review them in Sources & context."
+      ]
+    ],
+    "result": "One active goal owns the six-stage workflow. This desktop screenshot is from the separate setup rehearsal of the same practice case.",
+    "pins": [
+      [
+        0.26,
+        0.31
+      ],
+      [
+        0.26,
+        0.66
+      ],
+      [
+        0.7,
+        0.94
+      ]
+    ]
+  },
+  {
+    "stage": "Setup / guided workflow",
+    "title": "5. Let the checklist guide the next action",
+    "subtitle": "Project navigation / Guided workflow",
+    "shot": "04-workflow-checklist.jpg",
+    "steps": [
+      [
+        "Read the current gate",
+        "The top bar shows Setup. The stage checklist states the outcomes required before progression."
+      ],
+      [
+        "Open the missing item",
+        "Here one source still needs review. Use its Open control to reach the relevant workspace rather than guessing which screen to visit."
+      ],
+      [
+        "Advance after review",
+        "Advance to Discover becomes available once the required outcomes are met. A green checklist supports, rather than replaces, your judgment."
+      ]
+    ],
+    "result": "Setup shows 2 of 3 complete until the source is reviewed and selected for this goal.",
+    "pins": [
+      [
+        0.55,
+        0.03
+      ],
+      [
+        0.95,
+        0.41
+      ],
+      [
+        0.9,
+        0.27
+      ]
+    ]
+  },
+  {
+    "stage": "Setup / evidence",
+    "title": "6. Review extraction, then include the source",
+    "subtitle": "Project materials / Sources",
+    "shot": "05-reviewed-source.jpg",
+    "steps": [
+      [
+        "Compare with the original",
+        "Read Extracted source text and compare it with the original file. The brief intentionally leaves the numerical cash-change policy unresolved."
+      ],
+      [
+        "Accept the extraction",
+        "Accept extracted source for this project makes the reviewed extraction available. This does not confirm every claim in the original."
+      ],
+      [
+        "Select it for this goal",
+        "Use for the named goal is a separate switch. Check classification; confidential context must use local inference."
+      ]
+    ],
+    "result": "Both switches are on and SRC-01 is Included. Return to Guided workflow and Advance to Discover. Extraction review and goal selection are separate decisions.",
+    "pins": [
+      [
+        0.46,
+        0.68
+      ],
+      [
+        0.46,
+        0.39
+      ],
+      [
+        0.7,
+        0.39
+      ]
+    ]
+  },
+  {
+    "stage": "Discover / stakeholder",
+    "title": "7. Record who owns the business decision",
+    "subtitle": "Project materials / Registers / Stakeholders",
+    "shot": "39-registers-stakeholder.jpg",
+    "steps": [
+      [
+        "Add a stakeholder",
+        "Choose Add stakeholder and replace the default title with the relevant person or role."
+      ],
+      [
+        "Make ownership explicit",
+        "This rehearsal names a simulated shop owner and cashier. Keep the practice label; real work needs the actual responsible stakeholder."
+      ],
+      [
+        "Review the details",
+        "Expand Edit details to set the owner and appropriate status. A register row alone is not external identity verification."
+      ]
+    ],
+    "result": "A stakeholder entry exists for discovery. Return to Guided workflow and record the missing cash-change question.",
+    "pins": [
+      [
+        0.89,
+        0.18
+      ],
+      [
+        0.41,
+        0.44
+      ],
+      [
+        0.94,
+        0.44
+      ]
+    ]
+  },
+  {
+    "stage": "Clarify / confirmed answer",
+    "title": "8. Resolve the missing rule with a person",
+    "subtitle": "Guided workflow / Clarification queue",
+    "shot": "06-confirm-answer.jpg",
+    "steps": [
+      [
+        "Record the question",
+        "Ask for the maximum cash change and the outcome above it. Advance from Discover once stakeholder and question records exist."
+      ],
+      [
+        "Save the actual answer",
+        "For practice: limit 500; above 500, block completion and request smaller cash. In real work, obtain that decision from the stakeholder."
+      ],
+      [
+        "Identify the confirmer",
+        "Enter Simulated shop owner (practice only), then Save answer. Review the whole clarification queue before advancing to Define."
+      ]
+    ],
+    "result": "The clarification is Answered and identifies its self-reported confirmer. Never mark an AI guess as stakeholder-confirmed.",
+    "pins": [
+      [
+        0.23,
+        0.19
+      ],
+      [
+        0.24,
+        0.44
+      ],
+      [
+        0.24,
+        0.58
+      ]
+    ]
+  },
+  {
+    "stage": "Define / Task AI",
+    "title": "9. Ask for one focused proposal",
+    "subtitle": "Guided workflow / Work with BA Mate",
+    "shot": "07-task-ai.jpg",
+    "steps": [
+      [
+        "Choose the task",
+        "Select Draft requirements and user stories. This request asks for one requirement for the confirmed limit."
+      ],
+      [
+        "Constrain the request",
+        "Specify the rule, equality boundary and first blocked value. Inspect comparison mode and included evidence before running."
+      ],
+      [
+        "Allow the intended processing",
+        "External model use requires this project permission as well as a saved provider connection. Run selected task, or cancel an ongoing request."
+      ]
+    ],
+    "result": "The API request prepares a proposal. Existing artifacts are unchanged until you review and adopt selected items.",
+    "pins": [
+      [
+        0.25,
+        0.54
+      ],
+      [
+        0.58,
+        0.54
+      ],
+      [
+        0.22,
+        0.63
+      ]
+    ]
+  },
+  {
+    "stage": "Define / proposal review",
+    "title": "10. Select, improve and adopt only useful items",
+    "subtitle": "Task AI / Review the proposal",
+    "shot": "08-review-proposal.jpg",
+    "steps": [
+      [
+        "Read against the answer",
+        "Check the 500-unit rule, actor and blocked outcome. A source identifier or valid response format does not establish support."
+      ],
+      [
+        "Tighten the draft",
+        "Use clear requirement wording and explicit 500/501 tests. Remove evidence references that do not support the numerical policy."
+      ],
+      [
+        "Select the intended item",
+        "Tick only the requirement; leave the unnecessary story unselected. Scroll to Add selected items as drafts. Final approval is separate."
+      ]
+    ],
+    "result": "A reviewed proposal becomes a working draft. This API screenshot replays proposal review in the setup rehearsal; its generated IDs differ.",
+    "pins": [
+      [
+        0.47,
+        0.33
+      ],
+      [
+        0.37,
+        0.95
+      ],
+      [
+        0.233,
+        0.531
+      ]
+    ]
+  },
+  {
+    "stage": "Define / requirements",
+    "title": "11. Inspect the working requirement",
+    "subtitle": "Project materials / Requirements & stories / Requirements",
+    "shot": "10-requirement-draft.jpg",
+    "steps": [
+      [
+        "Read the statement",
+        "The requirement blocks completion when tender minus total exceeds 500 and asks the cashier to request a smaller amount."
+      ],
+      [
+        "Check measurable criteria",
+        "At total 100, cash 600 gives change 500; cash 601 gives 501. These examples check the limit, not every checkout behaviour."
+      ],
+      [
+        "Submit for review",
+        "After drafting, return to Guided workflow and Advance to Validate. Submit the ready artifact for review; keep rationale, evidence and unresolved matters visible."
+      ]
+    ],
+    "result": "The item is still Draft until submitted. Manual New requirement authoring follows the same evidence and review controls.",
+    "pins": [
+      [
+        0.48,
+        0.4
+      ],
+      [
+        0.69,
+        0.86
+      ],
+      [
+        0.83,
+        0.33
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / evidence links",
+    "title": "12. Verify meaning at the current revision",
+    "subtitle": "Review & approval / Evidence links (workspace title: Traceability)",
+    "shot": "11-evidence-links.jpg",
+    "steps": [
+      [
+        "Follow each relationship",
+        "Compare the confirmed answer with the requirement and the process diagram. A relationship begins as proposed support."
+      ],
+      [
+        "Verify the actual support",
+        "Select the row, inspect its current endpoints and change Review status only after reviewing meaning and available originals."
+      ],
+      [
+        "Watch for staleness",
+        "Edits can invalidate revision-pinned reviews. Pending or Broken means review or repair; do not chase a percentage alone."
+      ]
+    ],
+    "result": "Three reviewed relationships are Verified in the initial example. The requirement traces to the confirmed decision that supplies the limit.",
+    "pins": [
+      [
+        0.35,
+        0.38
+      ],
+      [
+        0.35,
+        0.68
+      ],
+      [
+        0.34,
+        0.18
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / SRS synchronization",
+    "title": "13. Select approved artifacts for the document",
+    "subtitle": "Requirements & stories / select the intended approved items",
+    "shot": "12-srs-selection.jpg",
+    "steps": [
+      [
+        "Approve individually",
+        "Review the requirement and its evidence first. Select the approved item; selection alone does not copy or approve it."
+      ],
+      [
+        "Choose the destination mode",
+        "Use Create new SRS for the first document. Update existing SRS and Create addendum are available for other situations."
+      ],
+      [
+        "Prepare the proposal",
+        "Choose Create/update SRS. Review the proposed block before applying it; selections can span tabs and searches."
+      ]
+    ],
+    "result": "The selected count is 1 approved artifact. The next screen is a synchronization proposal, not an automatic document edit.",
+    "pins": [
+      [
+        0.22,
+        0.82
+      ],
+      [
+        0.54,
+        0.2
+      ],
+      [
+        0.84,
+        0.2
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / synchronization preview",
+    "title": "14. Compare before applying an SRS update",
+    "subtitle": "Requirements & stories / Create/update SRS / Review document synchronization",
+    "shot": "13-srs-preview.jpg",
+    "steps": [
+      [
+        "Inspect the target",
+        "Confirm the section, artifact ID and source revision. Check for content already present to avoid duplication."
+      ],
+      [
+        "Compare the content",
+        "Read the statement, boundary criteria, rationale and evidence references that will enter the SRS."
+      ],
+      [
+        "Apply only selected updates",
+        "Use Apply selected updates when correct, or Reject proposal. If either side changes, prepare a fresh preview."
+      ]
+    ],
+    "result": "Applying the reviewed selection creates the controlled document block and a synchronization receipt.",
+    "pins": [
+      [
+        0.22,
+        0.4
+      ],
+      [
+        0.55,
+        0.51
+      ],
+      [
+        0.71,
+        0.85
+      ]
+    ]
+  },
+  {
+    "stage": "Define / process proposal",
+    "title": "15. Review the generated process",
+    "subtitle": "Task AI / Draft a process diagram / Review the proposal",
+    "shot": "09-diagram-proposal.jpg",
+    "steps": [
+      [
+        "Compare with the rule",
+        "This OpenRouter proposal calculates change, tests whether it exceeds 500, then blocks or permits completion."
+      ],
+      [
+        "Read code and preview",
+        "Check the rendered branches as well as the Mermaid source. Valid syntax proves that the diagram can render, not that the process is correct."
+      ],
+      [
+        "Adopt the reviewed draft",
+        "Verify the linked requirement and clarification, select Diagram 1 and use Add selected items as drafts below the proposal."
+      ]
+    ],
+    "result": "The accepted diagram is a draft in Diagram studio. You still need to inspect and approve the actual model.",
+    "pins": [
+      [
+        0.25,
+        0.23
+      ],
+      [
+        0.28,
+        0.65
+      ],
+      [
+        0.23,
+        0.4
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / diagram studio",
+    "title": "16. Review and approve the process model",
+    "subtitle": "Deliverables / Diagrams",
+    "shot": "14-diagram-studio.jpg",
+    "steps": [
+      [
+        "Inspect the whole flow",
+        "Review the threshold and both outcomes. Scroll the preview if necessary; the visible top is only part of a vertical diagram."
+      ],
+      [
+        "Edit deliberately",
+        "Use the structured node labels or Mermaid source and Save version. Recheck every branch after edits."
+      ],
+      [
+        "Approve the model",
+        "Choose Approve only when the current rendered diagram and evidence are correct. Export, focus and document-embedding tools are nearby."
+      ]
+    ],
+    "result": "An approved diagram can be embedded in a document. Its approval and revision remain separate from the document.",
+    "pins": [
+      [
+        0.53,
+        0.81
+      ],
+      [
+        0.78,
+        0.6
+      ],
+      [
+        0.88,
+        0.18
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / embed",
+    "title": "17. Add a version-pinned diagram to the SRS",
+    "subtitle": "Diagram studio / Add to document",
+    "shot": "15-embed-diagram.jpg",
+    "steps": [
+      [
+        "Choose a draft document",
+        "Select the working SRS created through synchronization. An approved document needs a working revision before content changes."
+      ],
+      [
+        "Choose the section",
+        "Use the existing destination or create a solution and process models section."
+      ],
+      [
+        "Add the diagram",
+        "The embed records this diagram revision. A later diagram change needs an explicit compare-and-refresh review."
+      ]
+    ],
+    "result": "The SRS contains the approved diagram at v1. Embedding a diagram does not approve the entire document.",
+    "pins": [
+      [
+        0.35,
+        0.42
+      ],
+      [
+        0.35,
+        0.53
+      ],
+      [
+        0.62,
+        0.61
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / document studio",
+    "title": "18. Add context, then review the whole SRS",
+    "subtitle": "Deliverables / Documents",
+    "shot": "16-document-review.jpg",
+    "steps": [
+      [
+        "Complete the document context",
+        "Use sections and blocks for purpose, scope, stakeholders, process, assumptions and unresolved matters. A synchronized requirement is only part of an SRS."
+      ],
+      [
+        "Read in Review mode",
+        "Compare the 500-unit requirement, criteria and embedded process. Review mode prevents text editing while you inspect the document."
+      ],
+      [
+        "Submit the draft",
+        "Use Submit for review when ready. Return to draft for corrections; approved content requires Create working revision."
+      ]
+    ],
+    "result": "The short practice SRS is submitted for review. Extend and validate it with real stakeholders before using it for a real checkout.",
+    "pins": [
+      [
+        0.47,
+        0.47
+      ],
+      [
+        0.47,
+        0.39
+      ],
+      [
+        0.83,
+        0.39
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / safeguards",
+    "title": "19. Review safeguards and findings",
+    "subtitle": "Review & approval / Checks & safeguards",
+    "shot": "17-safeguards.jpg",
+    "steps": [
+      [
+        "Read the finding counts",
+        "Inspect open findings, warnings and blockers. Zero recorded findings does not mean an independent assessment found no issues."
+      ],
+      [
+        "Review applicability",
+        "Core human approval, privacy, uncertainty and traceability safeguards stay in force. Contextual packs add project rules."
+      ],
+      [
+        "Resolve real concerns",
+        "For any finding, review severity, evidence and responsible decision. Resolve the underlying issue before approval rather than weakening the policy."
+      ]
+    ],
+    "result": "This run has no accepted findings. The next page shows why AI findings must themselves be reviewed.",
+    "pins": [
+      [
+        0.37,
+        0.23
+      ],
+      [
+        0.43,
+        0.53
+      ],
+      [
+        0.46,
+        0.35
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / AI is a reviewer, too",
+    "title": "20. Challenge unsupported AI findings",
+    "subtitle": "Task AI / Review quality and evidence / Review the proposal",
+    "shot": "18-quality-proposal.jpg",
+    "steps": [
+      [
+        "Check the alleged problem",
+        "This suggested finding asks for a direct link to the initial brief. The brief deliberately has no limit; the confirmed answer supplies the policy."
+      ],
+      [
+        "Keep useful review questions",
+        "Consider whether behaviour and evidence are sufficient. Exact UI copy and register status are separate review choices, not automatic proof of a defect."
+      ],
+      [
+        "Reject unsupported proposals",
+        "This run rejected the quality proposal after review. Accepted findings would enter the safeguards workspace for a recorded BA decision."
+      ]
+    ],
+    "result": "The proposal is retained in AI task history, while unsupported findings are kept out of the governed artifact set.",
+    "pins": [
+      [
+        0.27,
+        0.1
+      ],
+      [
+        0.35,
+        0.57
+      ],
+      [
+        0.32,
+        0.76
+      ]
+    ]
+  },
+  {
+    "stage": "Validate / readiness",
+    "title": "21. Complete Validate before approval",
+    "subtitle": "Guided workflow / Validate completion checklist",
+    "shot": "19-validation-checklist.jpg",
+    "steps": [
+      [
+        "Check all outcomes",
+        "Confirm reviewed artifacts, current verified evidence and no unresolved blockers. Include the process and required documents."
+      ],
+      [
+        "Follow specific issues",
+        "Use the Open actions when a requirement is incomplete. Correct the cited record rather than changing scope simply to make progress."
+      ],
+      [
+        "Advance to Approve",
+        "Once ready, use Advance to Approve. Baseline recording belongs to the next stage."
+      ]
+    ],
+    "result": "Validate shows 4 of 4 complete. This is the app readiness result; the BA remains responsible for the review.",
+    "pins": [
+      [
+        0.38,
+        0.31
+      ],
+      [
+        0.7,
+        0.34
+      ],
+      [
+        0.9,
+        0.17
+      ]
+    ]
+  },
+  {
+    "stage": "Approve / local decision record",
+    "title": "22. Record the reviewed baseline scope",
+    "subtitle": "History & approved versions / Approve new baseline",
+    "shot": "20-baseline-approval.jpg",
+    "steps": [
+      [
+        "Review exact revisions",
+        "Expand Revisions in this baseline and inspect open questions/checks. The package must include the intended current work."
+      ],
+      [
+        "Name the authorized approver",
+        "For this fictional exercise use an explicitly simulated practice approver. Real approvals need the actual responsible authorized person."
+      ],
+      [
+        "Record the approval",
+        "Confirm the authorization statement and choose Record approval. The app records a self-attestation; it does not authenticate the named person."
+      ]
+    ],
+    "result": "The reviewed package is locked as B1. A local snapshot is a separate checkpoint and does not record formal baseline approval.",
+    "pins": [
+      [
+        0.33,
+        0.46
+      ],
+      [
+        0.33,
+        0.6
+      ],
+      [
+        0.64,
+        0.73
+      ]
+    ]
+  },
+  {
+    "stage": "Approve / B1",
+    "title": "23. Recognise the locked first baseline",
+    "subtitle": "Review & approval / History & approved versions",
+    "shot": "21-baseline-b1.jpg",
+    "steps": [
+      [
+        "Find B1 in history",
+        "B1 captures the original 500-unit requirement, diagram and SRS revisions with its practice-only approver."
+      ],
+      [
+        "Inspect the audit trail",
+        "The right-hand trail retains the proposal, edits and approval actions. Use it to understand how the reviewed package was reached."
+      ],
+      [
+        "Choose the next exercise",
+        "For the B1-to-B2 walkthrough keep the goal active. For a B1-only practice run, complete the goal when readiness allows."
+      ]
+    ],
+    "result": "The main run locked requirement v1, diagram v1 and document v6 in B1. Restore as draft creates new working content.",
+    "pins": [
+      [
+        0.28,
+        0.68
+      ],
+      [
+        0.7,
+        0.62
+      ],
+      [
+        0.89,
+        0.23
+      ]
+    ]
+  },
+  {
+    "stage": "Change / new evidence",
+    "title": "24. Record the later 300-unit decision",
+    "subtitle": "Keep the original goal active / Guided workflow / answered clarification",
+    "shot": "22-changed-decision.jpg",
+    "steps": [
+      [
+        "Supersede explicitly",
+        "Record that the simulated shop owner now wants a 300-unit maximum and the same block-and-request-smaller-cash outcome."
+      ],
+      [
+        "Save the confirmation",
+        "Keep the practice-only confirmer clear. In real work, obtain the revised instruction from the actual stakeholder."
+      ],
+      [
+        "Recheck dependent work",
+        "Changed evidence can withdraw working reviews and evidence verification. B1 remains locked at its original content."
+      ]
+    ],
+    "result": "The new answer is saved. The existing approved baseline stays available for comparison while working records need review.",
+    "pins": [
+      [
+        0.28,
+        0.31
+      ],
+      [
+        0.24,
+        0.49
+      ],
+      [
+        0.53,
+        0.02
+      ]
+    ]
+  },
+  {
+    "stage": "Change / reviewed patches",
+    "title": "25. Review and implement a controlled change",
+    "subtitle": "Review & approval / Changes & impact / New change request",
+    "shot": "24-implemented-change.jpg",
+    "steps": [
+      [
+        "Identify the affected scope",
+        "Name the business reason, select B1 and add affected requirement, diagram and SRS records. This view retains the implemented review record."
+      ],
+      [
+        "Draft full replacements",
+        "Provide a real statement and acceptance-criteria patch, diagram source and the exact document block. Compare the current and replacement text."
+      ],
+      [
+        "Accept, then implement",
+        "Select correct patches, Accept selected patches, then Implement accepted patches. Scroll to these actions; implementation creates working revisions."
+      ]
+    ],
+    "result": "The run applied four patches across three artifacts and returned the goal to Validate. Implementation alone does not complete revalidation.",
+    "pins": [
+      [
+        0.26,
+        0.27
+      ],
+      [
+        0.76,
+        0.41
+      ],
+      [
+        0.49,
+        0.01
+      ]
+    ]
+  },
+  {
+    "stage": "Change / current evidence",
+    "title": "26. Review links again after the change",
+    "subtitle": "Review & approval / Evidence links",
+    "shot": "25-evidence-needs-recheck.jpg",
+    "steps": [
+      [
+        "Expect pending links",
+        "The confirmed answer and artifact revisions changed. Previous verification no longer covers the current records."
+      ],
+      [
+        "Compare the 300-unit rule",
+        "Check the changed requirement, diagram and answer. At total 100, cash 400 is allowed by the limit; cash 401 is blocked."
+      ],
+      [
+        "Verify current support",
+        "Review each affected relationship and set its status only after checking meaning at the current revisions."
+      ]
+    ],
+    "result": "This screen deliberately shows 0% and three Pending links before they were reverified. That is a review prompt, not data loss.",
+    "pins": [
+      [
+        0.25,
+        0.21
+      ],
+      [
+        0.39,
+        0.4
+      ],
+      [
+        0.35,
+        0.74
+      ]
+    ]
+  },
+  {
+    "stage": "Change / document synchronization",
+    "title": "27. Update the SRS from the reviewed requirement",
+    "subtitle": "Approve the changed requirement / Update existing SRS / review the preview",
+    "shot": "26-resync-preview.jpg",
+    "steps": [
+      [
+        "Select the draft target",
+        "A changed approved document needs a working revision. Select the intended SRS and section, not a different deliverable."
+      ],
+      [
+        "Compare old and new",
+        "The left block contains 500/501 tests; the right contains 300/301 tests. Review references and source revision as well as the number."
+      ],
+      [
+        "Apply the reviewed update",
+        "Apply selected updates, then reopen the SRS and look for duplication, stale criteria or missing context."
+      ]
+    ],
+    "result": "The managed requirement block uses requirement v2 and current evidence. Unrelated prose still needs a separate review.",
+    "pins": [
+      [
+        0.18,
+        0.36
+      ],
+      [
+        0.54,
+        0.59
+      ],
+      [
+        0.74,
+        0.91
+      ]
+    ]
+  },
+  {
+    "stage": "Change / diagram revision",
+    "title": "28. Refresh the pinned diagram deliberately",
+    "subtitle": "Documents / stale embed / Review and refresh",
+    "shot": "27-refresh-embed.jpg",
+    "steps": [
+      [
+        "Compare the two revisions",
+        "The modal identifies previously inserted v1 and current v2. Scroll each preview or expand its source to inspect the changed decision."
+      ],
+      [
+        "Check business meaning",
+        "For this change, verify that 500 became 300 while the blocked and permitted branches remained consistent."
+      ],
+      [
+        "Use the current revision",
+        "Choose Use current revision only after comparison. This updates the document reference; it does not approve the diagram by itself."
+      ]
+    ],
+    "result": "The SRS pins diagram v2 after review. Recheck and submit the changed document before recording change revalidation.",
+    "pins": [
+      [
+        0.2,
+        0.27
+      ],
+      [
+        0.53,
+        0.27
+      ],
+      [
+        0.79,
+        0.79
+      ]
+    ]
+  },
+  {
+    "stage": "Change / revalidation",
+    "title": "29. Record the review of implemented work",
+    "subtitle": "Changes & impact / Record revalidation",
+    "shot": "28-change-revalidated.jpg",
+    "steps": [
+      [
+        "Review all affected work",
+        "Check the 300/301 boundaries, submitted document, current diagram and verified evidence links. Repair issues the app reports."
+      ],
+      [
+        "Record revalidation",
+        "Choose Record revalidation after your review. It is a BA review record, not an automated assertion that business software tests ran."
+      ],
+      [
+        "Prepare the next baseline",
+        "Return to Guided workflow, complete Validate and advance to Approve. Further edits may invalidate revalidation again."
+      ]
+    ],
+    "result": "The notification confirms Change revalidated. The next action is a new baseline approval, preserving B1.",
+    "pins": [
+      [
+        0.28,
+        0.14
+      ],
+      [
+        0.38,
+        0.49
+      ],
+      [
+        0.73,
+        0.89
+      ]
+    ]
+  },
+  {
+    "stage": "Approve / B2",
+    "title": "30. Keep B1 and B2 side by side",
+    "subtitle": "History & approved versions / Approve new baseline",
+    "shot": "29-baselines-b1-b2.jpg",
+    "steps": [
+      [
+        "Approve the new package",
+        "Review the current manifest and record another practice-only approval after revalidation."
+      ],
+      [
+        "Compare the baselines",
+        "B2 contains requirement v2, diagram v2 and SRS v9. B1 still contains the original 500-unit revisions."
+      ],
+      [
+        "Finish and back up",
+        "Complete the goal, then export a fresh project backup. Use the approved B2 revision when exporting a deliverable."
+      ]
+    ],
+    "result": "The stored B1 record was verified unchanged after the B2 workflow. Both packages remain locked in history.",
+    "pins": [
+      [
+        0.37,
+        0.48
+      ],
+      [
+        0.37,
+        0.7
+      ],
+      [
+        0.72,
+        0.31
+      ]
+    ]
+  },
+  {
+    "stage": "Finish / goal complete",
+    "title": "31. Complete the goal at its stopping point",
+    "subtitle": "More tools / Goals / Mark complete",
+    "shot": "30-completed-goal.jpg",
+    "steps": [
+      [
+        "Read completion readiness",
+        "Do not complete while required reviews, source revisions, baselines or change revalidation remain outstanding."
+      ],
+      [
+        "Mark complete",
+        "The completed card records the goal and all six finished workflow stages. No work is sent to stakeholders by this action."
+      ],
+      [
+        "Start later work separately",
+        "Completed work remains available. A later addendum or distinct deliverable needs an appropriate new goal."
+      ]
+    ],
+    "result": "The main cash-change goal is Completed with three deliverables and all six stages complete.",
+    "pins": [
+      [
+        0.67,
+        0.37
+      ],
+      [
+        0.47,
+        0.51
+      ],
+      [
+        0.9,
+        0.17
+      ]
+    ]
+  },
+  {
+    "stage": "Finish / overview",
+    "title": "Read the project dashboard after completion",
+    "subtitle": "Project navigation / Overview",
+    "shot": "35-overview.jpg",
+    "steps": [
+      [
+        "Recognise saved completed work",
+        "No active goal is expected after completion. The saved goal and deliverables remain available; use Manage goals to inspect them."
+      ],
+      [
+        "Separate coverage and quality",
+        "The example has 100% verified traceability but Quality is Not assessed. Link coverage is not an independent assessment of business correctness."
+      ],
+      [
+        "Return to the right workspace",
+        "Review sources, open artifacts or inspect recent activity from the overview. Start a new goal for later work rather than silently extending completed scope."
+      ]
+    ],
+    "result": "The main completed goal is retained in the dashboard. B1 and B2 remain in history, and a new goal can start separate work.",
+    "pins": [
+      [
+        0.3,
+        0.28
+      ],
+      [
+        0.7,
+        0.33
+      ],
+      [
+        0.87,
+        0.57
+      ]
+    ]
+  },
+  {
+    "stage": "Share / document export",
+    "title": "32. Export the approved document revision",
+    "subtitle": "Documents / Export document or project",
+    "shot": "54-document-export.jpg",
+    "steps": [
+      [
+        "Choose B2 explicitly",
+        "In Export revision choose Approved baseline B2. A working export is labelled not approved even when content resembles a baseline."
+      ],
+      [
+        "Pick the useful format",
+        "PDF and DOCX suit review; Markdown and Developer handover support other uses. Open the resulting file and inspect it before sharing."
+      ],
+      [
+        "Keep export and backup distinct",
+        "Project JSON contains current records regardless of revision selection. A recoverable project backup is the separate ZIP action in Settings."
+      ]
+    ],
+    "result": "The export control targets Approved baseline B2. An exported document does not replace a project backup.",
+    "pins": [
+      [
+        0.29,
+        0.24
+      ],
+      [
+        0.72,
+        0.24
+      ],
+      [
+        0.35,
+        0.31
+      ]
+    ]
+  },
+  {
+    "stage": "Recovery / backup",
+    "title": "33. Save a recoverable project package",
+    "subtitle": "Settings / Local data / Project backup",
+    "shot": "36-backup-settings.jpg",
+    "steps": [
+      [
+        "Select the right project",
+        "Use Project for backup. Similar names and restored copies make this check worthwhile."
+      ],
+      [
+        "Export the ZIP",
+        "Choose Export project backup. Store the downloaded ZIP outside the working project directory."
+      ],
+      [
+        "Preserve the available originals",
+        "The package includes available sources, artifacts, audit history and baselines. Check notices about missing originals; temporary editor drafts are not promised."
+      ]
+    ],
+    "result": "A completed fictional project ZIP is supplied in the practice folder. Use the backup action rather than a reset to protect your work.",
+    "pins": [
+      [
+        0.75,
+        0.79
+      ],
+      [
+        0.66,
+        0.86
+      ],
+      [
+        0.36,
+        0.81
+      ]
+    ]
+  },
+  {
+    "stage": "Recovery / restore",
+    "title": "34. Restore into a separate local project",
+    "subtitle": "Settings / Restore project backup / select the ZIP / Projects",
+    "shot": "37-restored-copy.jpg",
+    "steps": [
+      [
+        "Select a known package",
+        "Restore the completed practice ZIP to rehearse recovery. The app validates its package before adding the project."
+      ],
+      [
+        "Identify the restored copy",
+        "The new card is named restored copy. Open it and compare its goal, source availability and B1/B2 history."
+      ],
+      [
+        "Check before real reliance",
+        "Restoration does not overwrite the original. Confirm important content and available originals before you rely on any backup for recovery."
+      ]
+    ],
+    "result": "The restore rehearsal created a separate completed project with its source original and both baselines.",
+    "pins": [
+      [
+        0.05,
+        0.095
+      ],
+      [
+        0.6,
+        0.39
+      ],
+      [
+        0.85,
+        0.39
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / saved chat",
+    "title": "Ask questions about completed work",
+    "subtitle": "More tools / Ask BA Mate",
+    "shot": "31-saved-chat.jpg",
+    "steps": [
+      [
+        "Use a saved conversation",
+        "Select the goal conversation or create an appropriate one. Confirm the project and goal context before sending."
+      ],
+      [
+        "Read the answer and receipt",
+        "The response correctly explains the 300/301 boundary. It also says baseline details were absent from its supplied context; inspect history yourself."
+      ],
+      [
+        "Keep action authority separate",
+        "A completed goal provides answers only. Chat prose does not update artifacts or satisfy workflow checks. Stop cancels an in-flight request."
+      ]
+    ],
+    "result": "The saved assistant answer cites the requirement and clarification. Included-context receipts help you spot what the model could and could not know.",
+    "pins": [
+      [
+        0.28,
+        0.25
+      ],
+      [
+        0.54,
+        0.4
+      ],
+      [
+        0.71,
+        0.77
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / context mentions",
+    "title": "Attach the record you mean with @",
+    "subtitle": "Ask BA Mate / message composer",
+    "shot": "32-context-mentions.jpg",
+    "steps": [
+      [
+        "Find a record",
+        "Type @ and part of a name or ID. The list can include sources, requirements, diagrams, documents and changes."
+      ],
+      [
+        "Attach before sending",
+        "Use arrow keys and Enter to choose a highlighted item, or select it from the list. Inspect the resulting context chips."
+      ],
+      [
+        "Use the keyboard deliberately",
+        "Enter sends once the picker is closed; Shift+Enter adds a line and Escape dismisses the picker. Unsent drafts can be lost on reload."
+      ]
+    ],
+    "result": "The context picker is open for cash. A mention identifies intended context; the request receipt shows what actually reached the model.",
+    "pins": [
+      [
+        0.45,
+        0.82
+      ],
+      [
+        0.49,
+        0.59
+      ],
+      [
+        0.63,
+        0.84
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / quick assistant",
+    "title": "Ask alongside the current workspace",
+    "subtitle": "Top bar / Ask BA Mate",
+    "shot": "53-quick-assistant.jpg",
+    "steps": [
+      [
+        "Open the side panel",
+        "Use the top-bar assistant while keeping the current page in view. Close or pin it with the panel controls."
+      ],
+      [
+        "Check attached context",
+        "Add the relevant records and confirm processing permission. Read the assistant response alongside the actual evidence."
+      ],
+      [
+        "Choose durable history",
+        "Open saved conversations for lasting history. This quick assistant warns that its temporary drafts and history are not in project backups."
+      ]
+    ],
+    "result": "The panel shows project context and attention items. It can help explain work; approval remains a separate governed action.",
+    "pins": [
+      [
+        0.98,
+        0.03
+      ],
+      [
+        0.9,
+        0.08
+      ],
+      [
+        0.95,
+        0.97
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / project settings",
+    "title": "Manage context and external processing",
+    "subtitle": "More tools / Project settings",
+    "shot": "33-project-settings.jpg",
+    "steps": [
+      [
+        "Keep the project accurate",
+        "Edit name, domain and description, then Save project setup. A precise description improves the context for later work."
+      ],
+      [
+        "Decide external processing",
+        "The checkbox permits this project’s non-confidential context to reach the configured external model. This saves immediately."
+      ],
+      [
+        "Review safeguards",
+        "Policy setup retains locked core rules and allows contextual additions. Review proposed policy changes before saving them."
+      ]
+    ],
+    "result": "Provider settings and project permission are separate. Use a local model for confidential context.",
+    "pins": [
+      [
+        0.34,
+        0.35
+      ],
+      [
+        0.86,
+        0.34
+      ],
+      [
+        0.39,
+        0.87
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / authority",
+    "title": "Make approval responsibility explicit",
+    "subtitle": "Project settings / Project members",
+    "shot": "34-project-authority.jpg",
+    "steps": [
+      [
+        "Review local roles",
+        "The example Business analyst has the Owner / Lead BA role. Choose roles to match the actual responsibilities in your project."
+      ],
+      [
+        "Check approval authority",
+        "Can approve is an explicit local control. A recorded name or local role does not prove who is using the device."
+      ],
+      [
+        "Review policy changes",
+        "Core safeguards stay locked. Added policies should strengthen the review process and remain consistent with project scope."
+      ]
+    ],
+    "result": "An authorized active local role is required for baseline approval. This tour used only simulated approval records.",
+    "pins": [
+      [
+        0.85,
+        0.64
+      ],
+      [
+        0.85,
+        0.69
+      ],
+      [
+        0.29,
+        0.52
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / manual stories",
+    "title": "Write a user story without AI",
+    "subtitle": "Requirements & stories / User stories / New story",
+    "shot": "40-user-story.jpg",
+    "steps": [
+      [
+        "Describe the user outcome",
+        "Set persona, goal and value. The story narrative is assembled from these fields; read it back as a complete sentence."
+      ],
+      [
+        "Add testable criteria",
+        "Use Add criterion. This separate rehearsal checks the 500/501 boundary and makes the expected blocked outcome explicit."
+      ],
+      [
+        "Supply evidence before review",
+        "Link the appropriate requirement or supporting evidence in Evidence links. This illustration remains a draft, outside the completed main goal."
+      ]
+    ],
+    "result": "The optional story is saved as a draft. It is not automatically approved or included in the completed B1/B2 package.",
+    "pins": [
+      [
+        0.48,
+        0.25
+      ],
+      [
+        0.53,
+        0.57
+      ],
+      [
+        0.76,
+        0.71
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / AI impact assessment",
+    "title": "Assess a change before implementing it",
+    "subtitle": "Task AI / Assess a proposed change (separate setup rehearsal)",
+    "shot": "58-ai-impact.jpg",
+    "steps": [
+      [
+        "Describe a concrete change",
+        "The rehearsal asks what a hypothetical 500-to-300 change would affect. An assessment does not record a new stakeholder confirmation."
+      ],
+      [
+        "Review the affected records",
+        "The useful finding identifies requirement and story criteria. This run left an unsupported claim about lower limits and rounding unselected."
+      ],
+      [
+        "Adopt only reviewed items",
+        "Accepted findings need a BA decision. An AI impact analysis can inform the Changes & impact review; it does not apply patches or approve a baseline."
+      ]
+    ],
+    "result": "Only the supported impact finding was adopted in the optional rehearsal. The main B1/B2 workflow remains a separate completed project.",
+    "pins": [
+      [
+        0.5,
+        0.23
+      ],
+      [
+        0.35,
+        0.835
+      ],
+      [
+        0.233,
+        0.531
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / AI document sections",
+    "title": "Draft document prose with the API",
+    "subtitle": "Task AI / Draft document sections (separate setup rehearsal)",
+    "shot": "59-ai-document-section.jpg",
+    "steps": [
+      [
+        "Keep confirmed and proposed distinct",
+        "The instructions say that 500 is still the rehearsal’s confirmed rule; the later 300 discussion is hypothetical in this separate project."
+      ],
+      [
+        "Inspect content and evidence",
+        "Review every section. Section 2 correctly describes the 500/501 boundary and cites the recorded decision and artifacts."
+      ],
+      [
+        "Select the intended section",
+        "Only section 2 was adopted as a draft. The model offered extra sections despite the request; selection keeps you in control."
+      ]
+    ],
+    "result": "A document-section draft exists in the optional rehearsal. It still needs complete document context, evidence review and approval.",
+    "pins": [
+      [
+        0.45,
+        0.72
+      ],
+      [
+        0.35,
+        0.97
+      ],
+      [
+        0.233,
+        0.53
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / review finding",
+    "title": "Make a reasoned finding disposition",
+    "subtitle": "Review & approval / Checks & safeguards (separate setup rehearsal)",
+    "shot": "60-review-finding.jpg",
+    "steps": [
+      [
+        "Read the concern in context",
+        "The accepted impact warning identifies actual artifacts and criteria. A warning in this rehearsal is not an implemented change."
+      ],
+      [
+        "Inspect source and owner",
+        "The card identifies the suggesting model and responsible BA. Verify the underlying evidence rather than relying on the model name."
+      ],
+      [
+        "Resolve on a real basis",
+        "Record resolution after addressing a concern, or Mark not applicable where justified and permitted. Do not clear it solely to advance a stage."
+      ]
+    ],
+    "result": "This optional impact warning was deliberately left open for practice. It is outside the completed main project and does not claim a resolved business decision.",
+    "pins": [
+      [
+        0.35,
+        0.43
+      ],
+      [
+        0.38,
+        0.66
+      ],
+      [
+        0.4,
+        0.75
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / assumptions",
+    "title": "Keep an assumption visibly uncertain",
+    "subtitle": "Registers / Assumptions",
+    "shot": "41-register-assumptions.jpg",
+    "steps": [
+      [
+        "Record the uncertainty",
+        "This rehearsal assumes whole currency units and asks for rounding to be confirmed before real use."
+      ],
+      [
+        "Give it an owner",
+        "Open Edit details and assign responsibility. Keep an appropriate status instead of silently treating the assumption as confirmed."
+      ],
+      [
+        "Revisit dependent work",
+        "A new precision rule could change criteria and process behaviour. Resolve the assumption through evidence and stakeholder decisions."
+      ]
+    ],
+    "result": "The assumption remains Open in the separate rehearsal. An assumption record does not become a confirmed answer merely by being saved.",
+    "pins": [
+      [
+        0.39,
+        0.39
+      ],
+      [
+        0.72,
+        0.48
+      ],
+      [
+        0.35,
+        0.25
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / decisions",
+    "title": "Record decisions with their context",
+    "subtitle": "Registers / Decisions",
+    "shot": "42-register-decisions.jpg",
+    "steps": [
+      [
+        "Name the decision clearly",
+        "The example records the rehearsal’s 500-unit decision. Keep the original confirming evidence and responsible person available."
+      ],
+      [
+        "Manage owner and status",
+        "Use the expanded details to record ownership and the appropriate workflow state."
+      ],
+      [
+        "Use the right approval route",
+        "A decision row is not the baseline approval action. Later policy changes should still use controlled review of affected artifacts."
+      ]
+    ],
+    "result": "The Decisions register holds a separate practice entry. Confirmations, artifacts and approved baselines retain their own controls.",
+    "pins": [
+      [
+        0.37,
+        0.42
+      ],
+      [
+        0.55,
+        0.5
+      ],
+      [
+        0.42,
+        0.27
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / risks",
+    "title": "Track something that could go wrong",
+    "subtitle": "Registers / Risks",
+    "shot": "43-register-risks.jpg",
+    "steps": [
+      [
+        "State a potential consequence",
+        "This risk notes that a future rounding rule could change equality-boundary behaviour."
+      ],
+      [
+        "Assign responsibility",
+        "Use the owner and status controls so someone is responsible for the review and response."
+      ],
+      [
+        "Keep it current",
+        "Revisit the risk when scope, evidence or decisions change. A register entry alone does not resolve the underlying concern."
+      ]
+    ],
+    "result": "The risk remains visible in the optional rehearsal. Separate potential future harm from an issue that already needs action.",
+    "pins": [
+      [
+        0.38,
+        0.42
+      ],
+      [
+        0.55,
+        0.5
+      ],
+      [
+        0.48,
+        0.27
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / issues",
+    "title": "Track a matter that needs action now",
+    "subtitle": "Registers / Issues",
+    "shot": "44-register-issues.jpg",
+    "steps": [
+      [
+        "Write the action needed",
+        "The example asks to confirm currency precision before extending the rehearsal into real checkout work."
+      ],
+      [
+        "Use an accountable owner",
+        "Expand details, assign the responsible person or role and keep the status meaningful."
+      ],
+      [
+        "Close with a basis",
+        "Record a resolved state only after the necessary decision or work exists. Recheck affected artifacts and evidence where required."
+      ]
+    ],
+    "result": "The issue is still Open in the optional demonstration. A real blocking concern must be resolved before approval.",
+    "pins": [
+      [
+        0.38,
+        0.44
+      ],
+      [
+        0.58,
+        0.55
+      ],
+      [
+        0.52,
+        0.29
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / document comments",
+    "title": "Leave a review note without changing content",
+    "subtitle": "Documents / Comments",
+    "shot": "55-document-comments.jpg",
+    "steps": [
+      [
+        "Write a specific note",
+        "Identify the record, boundary or question. The example notes that 300 is allowed and 301 is blocked in B2."
+      ],
+      [
+        "Add and resolve deliberately",
+        "Add comment records the note; Mark resolved closes its review status after it is addressed."
+      ],
+      [
+        "Keep content review separate",
+        "A comment does not approve or edit the document. Use document status actions and content revisions for those decisions."
+      ]
+    ],
+    "result": "The note was added and subsequently marked resolved. The document content stayed at v9.",
+    "pins": [
+      [
+        0.67,
+        0.39
+      ],
+      [
+        0.45,
+        0.48
+      ],
+      [
+        0.85,
+        0.19
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / document links",
+    "title": "Connect a document block to its artifacts",
+    "subtitle": "Documents / block / Manage links",
+    "shot": "56-document-links.jpg",
+    "steps": [
+      [
+        "Choose the block first",
+        "Open Manage links on the exact requirement, process or prose block you intend to connect."
+      ],
+      [
+        "Check the selected records",
+        "The illustrated requirement block is linked to its governed requirement. Select only relevant project artifacts."
+      ],
+      [
+        "Inspect after a change",
+        "Block links support navigation and synchronization. They do not replace semantic evidence verification in the Traceability workspace."
+      ]
+    ],
+    "result": "The link picker shows the block’s current selection. No new link was added in this inspection.",
+    "pins": [
+      [
+        0.35,
+        0.39
+      ],
+      [
+        0.36,
+        0.51
+      ],
+      [
+        0.63,
+        0.4
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / diagram focus and exports",
+    "title": "Inspect the diagram at a larger scale",
+    "subtitle": "Diagram studio / Open diagram focus mode",
+    "shot": "57-diagram-focus.jpg",
+    "steps": [
+      [
+        "Use focus and zoom",
+        "Enlarge the diagram workspace and adjust zoom. Scroll the preview to inspect the full process and both outcomes."
+      ],
+      [
+        "Keep source and preview consistent",
+        "The source below shows the current 300-unit decision and both branches. Label edits still need versioning and review."
+      ],
+      [
+        "Export or exit",
+        "Mermaid, SVG, PNG and PDF controls are available. Image exports show the picture; keep the record or PDF for review status. Exit focus or Escape closes this view."
+      ]
+    ],
+    "result": "This is the approved v2 diagram. A good-looking rendered model still needs business and evidence review.",
+    "pins": [
+      [
+        0.56,
+        0.04
+      ],
+      [
+        0.17,
+        0.84
+      ],
+      [
+        0.67,
+        0.04
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / templates",
+    "title": "Preview a reusable foundation",
+    "subtitle": "Global navigation / Templates",
+    "shot": "48-templates.jpg",
+    "steps": [
+      [
+        "Choose the closest structure",
+        "The library offers starter structures such as banking discovery, people operations and controlled product change."
+      ],
+      [
+        "Preview before creating",
+        "Preview template shows the foundation, domain, safeguards and a project-name field. Create only after reviewing them."
+      ],
+      [
+        "Bring your own evidence",
+        "Templates do not copy project sources, conversations, artifacts or research observations into the new workspace."
+      ]
+    ],
+    "result": "The template preview was inspected without creating another project. A new template project still needs its own evidence and goal.",
+    "pins": [
+      [
+        0.2,
+        0.13
+      ],
+      [
+        0.82,
+        0.51
+      ],
+      [
+        0.34,
+        0.6
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / recent work",
+    "title": "Resume from recent activity",
+    "subtitle": "Global navigation / Recent work",
+    "shot": "50-recent-work.jpg",
+    "steps": [
+      [
+        "Find the relevant event",
+        "The activity list spans local projects. Read the project name and action before opening an item."
+      ],
+      [
+        "Continue in the right project",
+        "Use the project cards to return to its current goal or saved workspace."
+      ],
+      [
+        "Inspect the actual record",
+        "An activity label is a pointer. Check the current artifact, evidence and approval state before making further changes."
+      ]
+    ],
+    "result": "Recent work includes the completed main project and optional rehearsal activity, kept under their own project names.",
+    "pins": [
+      [
+        0.3,
+        0.29
+      ],
+      [
+        0.81,
+        0.3
+      ],
+      [
+        0.23,
+        0.44
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / built-in help",
+    "title": "Use the short guide inside the app",
+    "subtitle": "Global navigation / Beta guide",
+    "shot": "51-beta-guide.jpg",
+    "steps": [
+      [
+        "Refresh the core order",
+        "The built-in cards recap one goal, source review, proposal review and approval in order."
+      ],
+      [
+        "Look up interaction tips",
+        "The help covers mentions, selections, external-processing permission, feedback and recovery basics."
+      ],
+      [
+        "Use the detailed companion",
+        "For installation, provider variants and troubleshooting, use the existing three textual beta guides alongside this visual tour."
+      ]
+    ],
+    "result": "The in-app guide remains available while you work. This visual manual supplements the textual guide set.",
+    "pins": [
+      [
+        0.04,
+        0.22
+      ],
+      [
+        0.54,
+        0.65
+      ],
+      [
+        0.26,
+        0.87
+      ]
+    ]
+  },
+  {
+    "stage": "Toolbox / study service status",
+    "title": "Know when study functions are unavailable",
+    "subtitle": "Global navigation / Study participation",
+    "shot": "52-study-status.jpg",
+    "steps": [
+      [
+        "Read the actual state",
+        "This source-run service reports Study participation is not connected. Local BA work and backups remain available."
+      ],
+      [
+        "Follow the assigned protocol",
+        "For a formal study, obtain the researcher’s configured service, assigned task, comparison condition and stopping point."
+      ],
+      [
+        "Keep familiarisation separate",
+        "Practising this tour does not enrol you. Connected sign-in, stage evaluation and study submission were not exercised in this session."
+      ]
+    ],
+    "result": "This is the observed disconnected state. The guide does not present an unperformed study submission as completed.",
+    "pins": [
+      [
+        0.35,
+        0.29
+      ],
+      [
+        0.47,
+        0.34
+      ],
+      [
+        0.06,
+        0.26
+      ]
+    ]
+  },
+  {
+    "stage": "Keep this / troubleshooting map",
+    "title": "When you cannot take the next step",
+    "subtitle": "Use the app’s specific message, preserve your work and correct the underlying record.",
+    "shot": null,
+    "steps": [
+      [
+        "AI cannot connect",
+        "Check the saved provider and model, the correct provider key, availability or quota, and project external-processing permission. Use Cancel or Stop when needed."
+      ],
+      [
+        "A source is missing",
+        "Wait for extraction, compare it with the original, accept the extraction and select that reviewed revision for the active goal. Review changed originals again."
+      ],
+      [
+        "Advance is disabled",
+        "Read the current stage checklist and use its Open action. Missing stakeholder answers, criteria or evidence each need their own correction."
+      ],
+      [
+        "Approval is blocked",
+        "Check review states, current verified links, diagram/document dependencies, active approval authority and unresolved blocking items. Use the exact issue text."
+      ],
+      [
+        "Changed work is stale",
+        "Reverify affected evidence, synchronize the SRS, compare and refresh pinned diagrams, submit changed work and record revalidation before another baseline."
+      ],
+      [
+        "You need to stop",
+        "Save the intended records, wait for local saving and export a project ZIP. Copy essential unsent text separately; temporary assistant/editor drafts can be lost."
+      ]
+    ],
+    "result": "Practice success: completed main goal, B1 and B2 retained, current rule 300, 300/301 criteria, current approved diagram and SRS, and a verified recoverable backup. No research-validity or clean-device qualification is implied.",
+    "pins": []
+  }
+]

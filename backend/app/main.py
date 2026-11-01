@@ -2,6 +2,7 @@
 import os
 import asyncio
 import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -21,6 +22,7 @@ from .project_agents import AgentStart, start_agents, agent_status, agent_histor
 from .workflow import execute
 from .providers import ModelProvider
 from .qualification import qualify_profile, record_human_review
+from .token_management import model_capabilities, resolve_config
 
 PORT = os.getenv('BA_MATE_PORT', '8000')
 ORIGINS = {f'http://{host}:{port}' for host in ['localhost', '127.0.0.1'] for port in ['5173', PORT]}
@@ -39,7 +41,7 @@ async def lifespan(app):
             pass
         stop_analysis()
 
-app = FastAPI(title='BA Mate local research service', version='0.4.0', lifespan=lifespan)
+app = FastAPI(title='BA Mate local research service', version=runtime.APP_VERSION, lifespan=lifespan)
 
 @app.middleware('http')
 async def local_boundary(request: Request, call_next):
@@ -69,18 +71,22 @@ def session():
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'version': '0.4.0', 'mode': 'local', 'training': False}
+    return {'status': 'ok', 'version': runtime.APP_VERSION, 'mode': 'local', 'training': False}
 
 @app.get('/api/settings')
 def settings():
     return runtime.public_config()
 
 @app.put('/api/settings')
-def set_settings(value: runtime.ProviderConfig):
-    if value.output_tokens >= value.context_tokens - 1024:
-        raise HTTPException(422, 'Leave at least 1,024 context tokens for instructions and evidence.')
+async def set_settings(value: runtime.ProviderConfig):
+    await resolve_config(value)
     runtime.save_config(value)
     return runtime.public_config()
+
+@app.get('/api/settings/capabilities')
+async def settings_capabilities(provider: str, model: str, refresh: bool = False):
+    return await model_capabilities(provider, model, refresh)
+
 
 @app.post('/api/settings/test')
 async def test_connection():
@@ -175,9 +181,46 @@ def persist(value: WorkspaceSave):
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
+_workflow_tasks: dict[str, asyncio.Task] = {}
+_cancelled_workflow_requests: dict[str, float] = {}
+
+def _prune_cancelled_workflow_requests():
+    now = time.monotonic()
+    for key, expiry in list(_cancelled_workflow_requests.items()):
+        if expiry <= now:
+            del _cancelled_workflow_requests[key]
+
+class WorkflowCancellation(BaseModel):
+    request_id: str = Field(min_length=1, max_length=100)
+
+@app.post('/api/v1/workflow/cancel')
+async def cancel_workflow(value: WorkflowCancellation):
+    _prune_cancelled_workflow_requests()
+    # Retain early cancellations briefly in case the run arrives after this request.
+    if len(_cancelled_workflow_requests) >= 1000:
+        _cancelled_workflow_requests.pop(next(iter(_cancelled_workflow_requests)))
+    _cancelled_workflow_requests[value.request_id] = time.monotonic() + 120
+    task = _workflow_tasks.get(value.request_id)
+    if task and not task.done():
+        task.cancel()
+    return {'cancelled': bool(task)}
+
 @app.post('/api/v1/workflow/run')
 async def run(req: RunRequest):
-    return await execute(req)
+    _prune_cancelled_workflow_requests()
+    if req.request_id in _cancelled_workflow_requests:
+        raise HTTPException(409, 'This request was cancelled before it started.')
+    if req.request_id in _workflow_tasks:
+        raise HTTPException(409, 'A request with this identifier is already running.')
+    task = asyncio.create_task(execute(req))
+    _workflow_tasks[req.request_id] = task
+    try:
+        return await task
+    except asyncio.CancelledError as exc:
+        raise HTTPException(499, 'The request was cancelled by the client.') from exc
+    finally:
+        if _workflow_tasks.get(req.request_id) is task:
+            del _workflow_tasks[req.request_id]
 
 # Old deterministic routes must not accidentally serve synthetic evidence.
 @app.api_route('/api/v1/{path:path}', methods=['GET', 'POST'])

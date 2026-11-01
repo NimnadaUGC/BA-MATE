@@ -1,0 +1,61 @@
+[
+  {
+    "name": "M1 pinned-source mismatch",
+    "result": {
+      "mismatchedSourceIncluded": true,
+      "setupIssues": []
+    }
+  },
+  {
+    "name": "M5 blocker prevents artifact approval",
+    "result": {
+      "issues": [
+        "Resolve blocking clarifications and governance findings in this scope."
+      ]
+    }
+  },
+  {
+    "name": "M5 untestable criterion placeholder",
+    "result": {
+      "issues": [],
+      "note": "Syntactic support checks cannot establish semantic correctness."
+    }
+  },
+  {
+    "name": "M6 dependent document invalidation and baseline immutability",
+    "result": {
+      "requirementStatus": "draft",
+      "documentStatus": "draft",
+      "baselineUnchanged": true,
+      "traceStatus": "Pending"
+    }
+  },
+  {
+    "name": "M7 historical export uses selected snapshot",
+    "result": {
+      "containsOriginal": true,
+      "containsNewWorkingText": false
+    }
+  },
+  {
+    "name": "Recovery creates drafts and retains prior working copy",
+    "result": {
+      "recovered": true,
+      "draft": "draft",
+      "recoveryCopies": 4,
+      "gate": "Validate"
+    }
+  },
+  {
+    "name": "M2 governance-linked open questions in model context",
+    "result": {
+      "governanceQuestionIncluded": false
+    }
+  },
+  {
+    "name": "M4 AI requirement and story linking",
+    "result": {
+      "note": "applyProposal creates requirement.storyIds and story.requirementIds as empty arrays even when generated together; manual linking remains required."
+    }
+  }
+]

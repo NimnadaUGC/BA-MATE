@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-01",
+  "edition": "1.0.0-beta.3, source-run browser UI",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "goal_status": "Completed",
+  "B1_complete_record_unchanged": true,
+  "baselines": [
+    [
+      {
+        "id": "FR-609d5a0d",
+        "type": "Requirement",
+        "revision": 2
+      },
+      {
+        "id": "DGM-a68b56c3",
+        "type": "Diagram",
+        "revision": 2
+      },
+      {
+        "id": "DOC-mvxaz1tw-t3h",
+        "type": "Document",
+        "revision": 9
+      }
+    ],
+    [
+      {
+        "id": "FR-609d5a0d",
+        "type": "Requirement",
+        "revision": 1
+      },
+      {
+        "id": "DGM-a68b56c3",
+        "type": "Diagram",
+        "revision": 1
+      },
+      {
+        "id": "DOC-mvxaz1tw-t3h",
+        "type": "Document",
+        "revision": 6
+      }
+    ]
+  ],
+  "restored_goal_status": "Completed",
+  "restored_baseline_count": 2,
+  "original_source_sha256": "952db13fc9a9a6f263c68fe9630890f28569dea125bb25a2aa6ffd8223a2842c",
+  "all_practice_originals_match": true,
+  "backup_has_credential_pattern": false,
+  "session_key_removed_via_UI": true,
+  "human_qualification_approval_recorded": false,
+  "study_service": "not connected",
+  "screenshots": 63,
+  "guide_pages": 65
+}

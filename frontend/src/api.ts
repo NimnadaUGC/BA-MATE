@@ -31,7 +31,7 @@ async function requestWithSession<T>(path: string, options: RequestInit, refresh
 export type ProviderSettings = {
   provider: 'ollama' | 'openai' | 'gemini' | 'openrouter' | 'huggingface'; model: string; base_url: string;
   api_key?: string; has_key?: boolean; context_tokens: number; output_tokens: number;
-  timeout_seconds: number; temperature: number; key_storage?: string;
+  timeout_seconds: number; temperature: number; key_storage?: string; context_mode?: 'manual' | 'model';
 };
 export async function importSource(file: File) {
   if (file.size > 25 * 1024 * 1024) throw new Error('Choose a file no larger than 25 MB.');

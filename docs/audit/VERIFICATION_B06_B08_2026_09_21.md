@@ -23,14 +23,14 @@
 
 ## Automated verification
 
-Run from BA_MATE/frontend:
+Run from BA-MATE/frontend:
 
     npm test -- --run
     npm run build
 
 Result: 45 frontend tests passed; production build passed (existing large-chunk warning only).
 
-Run from BA_MATE/backend:
+Run from BA-MATE/backend:
 
     .venv/bin/python -m unittest discover -s tests -q
 

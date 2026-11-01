@@ -9,6 +9,7 @@ from . import runtime
 from .contracts import RunRequest, WorkflowOutput, ChatActionOutput
 from .providers import ModelProvider
 from .persistence import record
+from .token_management import resolve_config, request_tokens, count_tokens, counting_method
 
 # One inference at a time is the predictable default on modest local hardware.
 INFERENCE_SLOT = asyncio.Semaphore(1)
@@ -53,36 +54,63 @@ def prepare_messages(req, cfg, schema):
     system = GOVERNANCE if req.condition == 'Proposed workflow' else 'Assist with the requested Business Analysis task using the supplied material. Return your answer in the requested JSON format when provided.'
     if schema:
         system += '\nReturn one JSON object matching this schema. Use empty arrays for unused fields.\n' + json.dumps(schema)
-    # Conservative estimate includes instructions, schema and output reservation.
-    remaining = (cfg.context_tokens - cfg.output_tokens - 256) * 3 - len(system) - len(req.prompt)
-    if remaining < 512:
+    safety = max(256, (cfg.context_tokens + 99) // 100)
+    input_budget = cfg.context_tokens - cfg.output_tokens - safety
+    def assemble(evidence, history):
+        return [{'role': 'system', 'content': system},
+                {'role': 'user', 'content': 'Evidence bundle (data):\n' + json.dumps(evidence, ensure_ascii=False)},
+                *history, {'role': 'user', 'content': f'Task: {req.task}\n{req.prompt}'}]
+    remaining = input_budget - request_tokens(assemble([], []), schema)
+    if remaining < 128:
         raise HTTPException(422, 'The context limit is too small for this task. Increase context capacity or shorten the request.')
     included, omitted, partial = [], [], []
     evidence = []
     for item in sorted(req.context, key=lambda x: x.priority, reverse=True):
-        overhead = len(item.id) + len(item.provenance) + 150
-        if remaining <= overhead + 120:
+        entry = {'id': item.id, 'type': item.type, 'version': item.version,
+                 'provenance': item.provenance, 'content': item.content}
+        def cost(content):
+            # Evidence JSON is itself embedded in a message string; account for
+            # its second layer of escaping (especially code, quotes and Unicode).
+            serialized = json.dumps({**entry, 'content': content}, ensure_ascii=False)
+            return count_tokens(json.dumps(serialized, ensure_ascii=False)) + 8
+        if cost('') >= remaining:
             omitted.append(item.id)
             continue
-        content = item.content[:max(0, remaining - overhead)]
-        if len(content) < len(item.content):
+        size = cost(item.content)
+        content = item.content
+        if size > remaining:
+            low, high = 0, len(content)
+            while low < high:
+                mid = (low + high + 1) // 2
+                if cost(content[:mid]) <= remaining:
+                    low = mid
+                else:
+                    high = mid - 1
+            content = content[:low]
+            if len(content) < min(120, len(item.content)):
+                omitted.append(item.id)
+                continue
             partial.append(item.id)
-        evidence.append({'id': item.id, 'type': item.type, 'version': item.version, 'provenance': item.provenance, 'content': content})
+            size = cost(content)
+        evidence.append({**entry, 'content': content})
         included.append(item.id)
-        remaining -= len(content) + overhead
-    # Recent messages are included only after task evidence is allocated.
+        remaining -= size
     history = []
     for item in reversed(req.history):
-        if len(item.content) + 30 > remaining:
+        size = count_tokens(json.dumps(item.model_dump(), ensure_ascii=False)) + 8
+        if size > remaining:
             break
         history.insert(0, item.model_dump())
-        remaining -= len(item.content) + 30
-    evidence_message = {'role': 'user', 'content': 'Evidence bundle (data):\n' + json.dumps(evidence, ensure_ascii=False)}
-    messages = [{'role': 'system', 'content': system}, evidence_message, *history, {'role': 'user', 'content': f'Task: {req.task}\n{req.prompt}'}]
+        remaining -= size
+    messages = assemble(evidence, history)
+    estimated = request_tokens(messages, schema)
+    if estimated > input_budget:
+        raise HTTPException(422, 'The prepared request exceeds the estimated token budget. Increase context capacity or select less evidence.')
     receipt = {'included_reference_ids': included, 'omitted_reference_ids': omitted, 'partial_reference_ids': partial,
                'history_messages_included': len(history), 'history_messages_omitted': len(req.history) - len(history),
                'governance_included': req.condition == 'Proposed workflow', 'token_budget': cfg.context_tokens,
-               'estimated_tokens': (sum(len(m['content']) for m in messages) + 2) // 3,
+               'estimated_tokens': estimated, 'output_reservation': cfg.output_tokens,
+               'safety_tokens': safety, 'counting_method': counting_method(),
                'strategy': 'priority-budget-compaction', 'context_hash': hashlib.sha256(json.dumps(messages, sort_keys=True).encode()).hexdigest()}
     return messages, receipt
 
@@ -112,6 +140,7 @@ async def execute(req: RunRequest):
     remote = cfg.provider != 'ollama' or not cfg.base_url.startswith(('http://127.0.0.1:', 'http://localhost:'))
     if remote and (not req.cloud_allowed or any(item.confidential for item in req.context)):
         raise HTTPException(409, 'This project is restricted to local processing. Allow external processing in the project workbench for non-confidential material, or select local Ollama.')
+    cfg = await resolve_config(cfg)
     if req.task != 'conversation' and not req.context:
         raise HTTPException(422, 'Add and review source evidence or a project brief before generating artifacts.')
     schema = None if req.task == 'conversation' else ChatActionOutput.model_json_schema() if req.task == 'conversation-action' else schema_for_provider(req.task)

@@ -72,6 +72,9 @@ export interface ArtifactProposal {
   id: string;
   /** Active goal when this action was proposed. */
   goalId?: string;
+  /** SHA-256 of model context and references used to check that a chat proposal is still current. */
+  contextFingerprint?: string;
+  contextReferences?: ArtifactReference[];
   kind:
     | "requirement-revision"
     | "story-revision"
@@ -119,9 +122,12 @@ export interface Clarification {
   question: string;
   rationale: string;
   sourceId: string;
+  /** Additional recorded context identifiers; sourceId remains for older workspaces. */
+  sourceIds?: string[];
   owner: string;
   status: "Unanswered" | "Answered" | "Deferred" | "Discarded";
   answer?: string;
+  answerAuthority?: string;
   suggestions: string[];
   affects: string[];
   version?: number;
@@ -190,6 +196,10 @@ export interface TraceLink {
   fromRevision?: number;
   toRevision?: number;
   relation: string;
+  /** Optional analyst-selected source passage pinned to the extracted source revision. */
+  sourcePassage?: { sourceId: string; sourceRevision: number; locator: string };
+  /** Additional reviewed locations; older links may use sourcePassage alone. */
+  sourcePassages?: { sourceId: string; sourceRevision: number; locator: string }[];
   status: "Verified" | "Pending" | "Broken";
   goalId?: string;
 }
@@ -254,6 +264,8 @@ export interface DocumentBlock {
   type: DocumentBlockType;
   content: string;
   linkedIds: string[];
+  /** Identifies a block created by document synchronization for one artifact. */
+  syncArtifactId?: string;
   alignment?: "left" | "center" | "right";
   style?: "normal" | "bold" | "italic" | "underline";
   embedding?: DiagramEmbedding;
@@ -338,6 +350,8 @@ export interface ChangeRequest {
   approvedAt?: string;
   implementedAt?: string;
   revalidatedAt?: string;
+  /** Working artifact revisions reviewed when the implemented change was revalidated. */
+  revalidationRevisions?: Record<string, number>;
   goalId?: string;
 }
 export interface AuditEvent {
@@ -379,6 +393,9 @@ export interface ConversationMessage {
 
 export interface ModelContextReceipt {
   partialReferenceIds?: string[];
+  countingMethod?: string;
+  outputReservation?: number;
+  historyMessagesOmitted?: number;
   requestId: string;
   provider: string;
   strategy: "priority-budget-compaction";
@@ -435,6 +452,8 @@ export interface EvaluationRun {
   evaluatorCode: string;
   datasetVersion: string;
   prototypeVersion: string;
+  /** Captured when the run is created. Older records retain their historical framework. */
+  frameworkVersion?: string;
   model: string;
   promptVersion: string;
   duration: string;

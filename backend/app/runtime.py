@@ -5,11 +5,13 @@ import hashlib
 import json
 from pathlib import Path
 from urllib.parse import urlparse
+from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 DATA_DIR = Path(os.environ.get('BA_MATE_DATA_DIR', Path.home() / '.ba-mate')).expanduser()
 SESSION_TOKEN = secrets.token_urlsafe(32)
-FRAMEWORK_VERSION = 'ba-framework-0.4.0'
+APP_VERSION = '1.0.0-beta.3'
+FRAMEWORK_VERSION = 'F4-draft.1 (v1.0.0)'
 PROMPT_VERSION = 'evidence-workflow-3'
 
 class ProviderConfig(BaseModel):
@@ -18,8 +20,10 @@ class ProviderConfig(BaseModel):
     base_url: str = 'http://127.0.0.1:11434'
     api_key: str = ''
     timeout_seconds: int = Field(default=180, ge=10, le=600)
-    context_tokens: int = Field(default=8192, ge=2048, le=65536)
-    output_tokens: int = Field(default=2048, ge=256, le=8192)
+    # No prototype 64K/8K ceilings: the selected provider supplies the limits.
+    context_mode: Literal['manual', 'model'] = 'manual'
+    context_tokens: int = Field(default=8192, ge=2048)
+    output_tokens: int = Field(default=2048, ge=256)
     temperature: float = Field(default=0.2, ge=0, le=1)
 
     @field_validator('provider')

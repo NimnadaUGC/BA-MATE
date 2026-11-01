@@ -1,0 +1,39 @@
+{
+  "candidate": "1.0.0-beta.2",
+  "health": {
+    "status": "ok",
+    "version": "1.0.0-beta.2",
+    "mode": "local",
+    "training": false
+  },
+  "baseline_B1_unchanged": true,
+  "baseline_B2_manifest": [
+    {
+      "id": "FR-6843b47b",
+      "type": "Requirement",
+      "revision": 1
+    },
+    {
+      "id": "FR-a4be056d",
+      "type": "Requirement",
+      "revision": 2
+    },
+    {
+      "id": "DOC-mvwolu0e-009",
+      "type": "Document",
+      "revision": 5
+    }
+  ],
+  "unaffected_requirement_unchanged": true,
+  "unaffected_document_blocks_unchanged": true,
+  "goal_status": "Completed",
+  "change_status": "Revalidated",
+  "source_original_sha256_matches": true,
+  "saved_assistant_answers": 4,
+  "session_key_cleared_on_restart": true,
+  "original_provider_settings_restored": true,
+  "other_project_changes": [],
+  "final_reopen_verified": true,
+  "desktop_bundle_version": "1.0.0-beta.2",
+  "final_port": 57481
+}

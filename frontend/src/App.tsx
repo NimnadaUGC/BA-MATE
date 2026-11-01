@@ -1,8 +1,15 @@
+import { ProjectProcessingPreference } from "./ProjectProcessingPreference";
+import { assistantSessions } from "./assistantSessions";
 import { EvaluationContext } from "./EvaluationContext";
+import { conversationDrafts } from "./conversationDrafts";
 import { api, importSource } from "./api";
 import { ModelSettings } from "./ModelSettings";
 import { WorkflowWorkbench } from "./WorkflowWorkbench";
+import { searchSourcePassages } from "./sourceSearch";
+import { similarQuestions } from "./similarQuestions";
+import { passageIsCurrent, passageLabel, traceDisplayStatus, traceEndpointExists, traceReviewFingerprint } from "./tracePassage";
 import { captureSnapshot, enforceWorkingVersions, approvalAllowed, baselineIssues, restoreSnapshot, revisionManifest, revisionOf } from "./store";
+import { recordsOnlyRecoveryProject, sourcePassagePins } from "./store";
 import {
   useEffect,
   lazy,
@@ -101,6 +108,7 @@ import {
   downloadBlob,
   freshState,
   governanceCanDisable,
+  recordGovernanceDisposition,
   repository,
   traceCoverage,
 } from "./store";
@@ -110,10 +118,11 @@ import {
   formatDuration,
   PROMPT_VERSION,
   PROTOTYPE_VERSION,
+  FRAMEWORK_VERSION,
   summarizeStageResearch,
 } from "./research";
 import { buildResearchUpload, queueUpload, RESEARCH_CONSENT_VERSION, RESEARCH_INSTRUMENT_VERSION, RETENTION_NOTICE, retryDelayMs, validateResearchUpload, type LocalResearchParticipation } from "./researchBoundary";
-import { applyAcceptedPatches, patchIsCurrent, validateAcceptedPatches } from "./controlledChanges";
+import { applyAcceptedPatches, validateAcceptedPatches, changeAffectedIds, changeRevalidationIsCurrent, changeRevalidationIssues, changesNeedingRevalidation, baselineManifestWithChanges, baselineDependencyIssues } from "./controlledChanges";
 import {
   canAdvanceStage,
   canCompleteGoal,
@@ -125,6 +134,7 @@ import {
 import {
   notify,
   useDialogAccessibility,
+  onTabListKeyDown,
   type AppNoticeDetail,
   type NoticeTone,
 } from "./ui";
@@ -143,11 +153,14 @@ import {
   getProjectAnalysis,
   prepareProjectBackup,
   restoreProjectWorkspace,
+  missingRestoredOriginalCount,
   copyProjectToWorkspace,
   verifySourceOriginal,
+  reattachSourceOriginal,
   type WorkspaceCandidate,
 } from "./workspaceFiles";
 import { goalSelectableSource, goalSourceCurrent, mergeProjectAnalysis, requestProjectAgentRun, surfaceBackgroundQuestion } from "./projectSources";
+import { verifyBaselineSources } from "./baselineSources";
 const ConnectedArtifacts = lazy(() =>
   import("./connected").then((module) => ({
     default: module.ConnectedArtifacts,
@@ -266,16 +279,23 @@ const activeGoal = (project: Project) =>
   project.goals.find((goal) => goal.id === project.activeGoalId) ??
   project.goals.find((goal) => goal.status === "Active");
 
+export const projectChoiceLabel = (project: Project, projects: Project[]) =>
+  projects.filter(item => item.name.trim().toLocaleLowerCase() === project.name.trim().toLocaleLowerCase()).length > 1
+    ? `${project.name} · ${project.folderName || "No folder"} · ${project.id}`
+    : project.name;
+
 function IconButton({
   label,
   onClick,
   children,
   className = "",
+  disabled = false,
 }: {
   label: string;
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   children: ReactNode;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -283,6 +303,7 @@ function IconButton({
       className={`icon-button ${className}`}
       aria-label={label}
       title={label}
+      disabled={disabled}
       onClick={onClick}
     >
       {children}
@@ -297,19 +318,22 @@ function Button({
   type = "button",
   className = "",
   title,
+  label,
 }: {
   children: ReactNode;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   kind?: "primary" | "secondary" | "ghost" | "danger";
   disabled?: boolean;
   type?: "button" | "submit";
   className?: string;
   title?: string;
+  label?: string;
 }) {
   return (
     <button
       type={type}
       title={title}
+      aria-label={label}
       className={`button ${kind} ${className}`}
       disabled={disabled}
       onClick={onClick}
@@ -588,8 +612,8 @@ function Sidebar({
     return (
       <button
         key={section}
-        title={collapsed ? label : undefined}
-        aria-label={collapsed ? label : undefined}
+        title={label}
+        aria-label={label}
         className={location.pathname === path ? "active" : ""}
         aria-current={location.pathname === path ? "page" : undefined}
         onClick={() => go(path)}
@@ -617,7 +641,7 @@ function Sidebar({
       aria-label={mobileViewport ? "Navigation" : undefined}
     >
       <div className="brand-row">
-        <button className="brand-button" onClick={() => go("/projects")}>
+        <button className="brand-button" aria-label="BA Mate projects" title="BA Mate projects" onClick={() => go("/projects")}>
           <img src="/bamate_logo.png" alt="" />
           <span>
             <b>BA Mate</b>
@@ -638,8 +662,8 @@ function Sidebar({
             key={path}
             className={location.pathname === path ? "active" : ""}
             aria-current={location.pathname === path ? "page" : undefined}
-            title={collapsed ? label : undefined}
-            aria-label={collapsed ? label : undefined}
+            title={label}
+            aria-label={label}
             onClick={() => go(path)}
           >
             <Icon size={18} />
@@ -650,7 +674,7 @@ function Sidebar({
       <div className="sidebar-divider" />
       {project ? (
         <>
-          <button className="project-switcher" onClick={() => go("/projects")}>
+          <button className="project-switcher" aria-label={`Choose project, current project ${project.name}`} title={`Choose project, current project ${project.name}`} onClick={() => go("/projects")}>
             <i style={{ background: project.color }}>{project.name[0]}</i>
             <span>
               <b>{project.name}</b>
@@ -671,7 +695,7 @@ function Sidebar({
               );
               return (
                 <details className="project-nav-group" key={group.id} open={active || undefined}>
-                  <summary title={collapsed ? group.label : undefined}>
+                  <summary title={group.label} aria-label={group.label}>
                     <GroupIcon size={18} />
                     <span>{group.label}</span>
                     <ChevronDown size={15} />
@@ -693,7 +717,7 @@ function Sidebar({
         <div className="sidebar-projects">
           <div className="nav-label">Your projects</div>
           {state.projects.map((p) => (
-            <button key={p.id} onClick={() => go(`/projects/${p.id}/overview`)}>
+            <button key={p.id} aria-label={`Open ${projectChoiceLabel(p, state.projects)}, ${p.gate}, ${traceCoverage(p)} percent evidence coverage`} title={projectChoiceLabel(p, state.projects)} onClick={() => go(`/projects/${p.id}/overview`)}>
               <i style={{ background: p.color }}>{p.name[0]}</i>
               <span>
                 <b>{p.name}</b>
@@ -706,7 +730,7 @@ function Sidebar({
         </div>
       )}
       <div className="sidebar-footer">
-        <button onClick={onCollapse} aria-expanded={!collapsed}>
+        <button onClick={onCollapse} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand navigation" : "Collapse navigation"} aria-expanded={!collapsed}>
           <PanelRight size={18} />
           <span>{collapsed ? "Expand navigation" : "Collapse navigation"}</span>
         </button>
@@ -752,11 +776,11 @@ function AppTopbar({
         <ChevronRight size={14} />
         {project ? (
           <>
-            <span>{project.name}</span>
+            <span title={project.name}>{project.name}</span>
             {goal && (
               <>
                 <ChevronRight size={14} />
-                <span>{goal.title}</span>
+                <span title={goal.title}>{goal.title}</span>
                 <Badge tone="purple">{goal.gate}</Badge>
               </>
             )}
@@ -783,24 +807,16 @@ function AppTopbar({
           {saveStatus}
         </span>
         {project && assistantAvailable && (
-          <IconButton
-            label={
-              inspectorOpen
-                ? "Close BA Mate inspector"
-                : "Open BA Mate inspector"
-            }
-            className={inspectorOpen ? "active" : ""}
-            onClick={onInspector}
-          >
-            <Sparkles size={19} />
-          </IconButton>
+          <button className={`button topbar-assistant ${inspectorOpen ? "active" : ""}`} aria-label={inspectorOpen ? "Close BA Mate inspector" : "Open BA Mate inspector"} aria-expanded={inspectorOpen} onClick={onInspector}>
+            <Sparkles size={17} /> <span>Ask BA Mate</span>
+          </button>
         )}
       </div>
     </div>
   );
 }
 
-function ProjectOverview({
+export function ProjectOverview({
   project,
   go,
   update,
@@ -891,9 +907,74 @@ function ProjectOverview({
           </>
         }
       />
+      <div className="overview-grid">
+        <Card className="next-action-card">
+          <div className="gate-icon">
+            <span>{goal ? goal.gateIndex + 1 : "—"}</span>
+          </div>
+          <div>
+            <span className="eyebrow">
+              {goal ? "Active goal" : project.goals.length ? "Project goals" : "Project setup"}
+            </span>
+            <h2>{goal?.title ?? (project.goals.length ? "No active goal" : "Define the first project goal")}</h2>
+            <p>
+              {goal?.description ?? (project.goals.length
+                ? "Your saved goals and deliverables remain available. Review an existing goal or start a new one for further work."
+                : hasArtifacts ? "Start a goal to organize the existing deliverables into a governed workflow."
+                : "Start a BA Mate goal conversation to establish the first governed workflow. This fresh project contains no generated artifacts yet.")}
+            </p>
+            <Button
+              kind="primary"
+              onClick={() => go(goal ? "workflow" : "goals")}
+            >
+              {goal ? `Open ${goal.gate} workflow` : project.goals.length ? "Manage goals" : "Create first goal"}{" "}
+              <ArrowRight size={16} />
+            </Button>
+          </div>
+        </Card>
+        <Card
+          title="Review readiness"
+          description="Human review and evidence status"
+        >
+          <div className="metric-grid">
+            <Metric
+              label="Quality"
+              value="Not assessed"
+              detail={
+                hasArtifacts ? "Requires independent BA assessment" : "No artifacts yet"
+              }
+              tone={hasArtifacts ? "warning" : "neutral"}
+            />
+            <Metric
+              label="Traceability"
+              value={`${coverage}%`}
+              detail={`${project.traceLinks.filter((l) => traceDisplayStatus(project, l) === "Verified").length} verified links`}
+              tone={
+                project.traceLinks.length
+                  ? coverage >= 75
+                    ? "success"
+                    : "warning"
+                  : "neutral"
+              }
+            />
+            <Metric
+              label="Open questions"
+              value={openClarifications}
+              detail="Across all priorities"
+              tone="warning"
+            />
+            <Metric
+              label="Blocking"
+              value={blockers(project)}
+              detail="Approval gate"
+              tone={blockers(project) ? "danger" : "success"}
+            />
+          </div>
+        </Card>
+      </div>
       <div className="project-background-status" role="status">
         <Sparkles size={18} />
-        <span><b>BA Mate background work</b><small>{project.sourceAnalysisStatus === "ready" ? `${project.sources.length} project source${project.sources.length === 1 ? "" : "s"} discovered; ${project.sources.filter(source => source.status === "Needs review").length} need BA review.` : project.sourceAnalysisStatus === "failed" ? "The project folder is unavailable. Reconnect it in project settings." : "Project folder discovery is starting or still running."} {project.agentRun?.status === "ready" ? failedRole ? "Some suggestions paused; retry is available." : "Suggestions are ready for review." : project.agentRun?.status === "running" ? "Task roles are preparing suggestions." : project.agentRun?.status === "failed" ? "Suggestions paused; manual work is available." : ""}</small></span>
+        <span><b>BA Mate background work</b><small>{project.sourceAnalysisStatus === "ready" ? `${project.sources.length} project source${project.sources.length === 1 ? "" : "s"} discovered; ${project.sources.filter(source => source.status === "Needs review").length} need BA review.` : project.sourceAnalysisStatus === "failed" ? "The project folder is unavailable. Reconnect it in project settings." : "Project folder discovery is starting or still running."} {project.agentRun?.status === "ready" ? failedRole ? "Some suggestions paused; retry is available." : "Suggestions are ready for review." : project.agentRun?.status === "running" ? "Task roles are preparing suggestions." : project.agentRun?.status === "waiting_for_sources" ? project.agentRun.message ?? "Waiting for the project folder scan." : project.agentRun?.status === "failed" ? `Suggestions paused: ${project.agentRun.error ?? "manual work is available."}` : ""}</small></span>
         {(project.agentRun?.status === "failed" || failedRole) && project.sourceAnalysisStatus === "ready" &&
           <Button onClick={() => void retrySuggestions()} disabled={retryingSuggestions}>{retryingSuggestions ? "Retrying…" : "Retry suggestions"}</Button>}
         <Button onClick={() => go(project.sourceAnalysisStatus === "failed" ? "team" : "sources")}>{project.sourceAnalysisStatus === "failed" ? "Reconnect folder" : "Review sources"}</Button>
@@ -940,82 +1021,21 @@ function ProjectOverview({
               addAudit(p, "Adopted AI requirement draft", id, `${draft.title}; ${sourceIds.length} source links await human verification.`);
             })}>{staleSource ? "Review sources first" : "Adopt draft"}</Button><Button onClick={() => dismissSuggestion("draft", `${draft.title}:${draft.statement}`)}>Reject</Button></div></div>;
           })}</details>}
-          {suggestedQuestions.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Questions for people to answer <small>{suggestedQuestions.length}</small></summary>{suggestedQuestions.map(question =>
-            <div className="setup-agent-question" key={question}><span>{question}</span><div className="agent-suggestion-actions"><Button onClick={() => update(p => {
+          {suggestedQuestions.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Questions for people to answer <small>{suggestedQuestions.length}</small></summary><p>Compare suggested questions with existing ones before tracking them. <button className="text-button" onClick={() => go("workflow")}>Open clarification queue</button></p>{suggestedQuestions.map(question => {
+            const matches = similarQuestions(question, project.clarifications);
+            return <div className="setup-agent-question" key={question}><span>{question}{matches.length > 0 && <small className="suggestion-similar">Possible overlap: {matches.map(({ item }) => `${item.id} (${item.status}): ${item.question}`).join(" · ")}</small>}</span><div className="agent-suggestion-actions"><Button label={`Track question: ${question}`} onClick={() => update(p => {
               const id = uid("CQ"); p.clarifications.push({ id, priority: "Important", question,
                 rationale: "Suggested by BA Mate from tentative project context; confirm with the responsible person.",
                 sourceId: "PROJECT-BRIEF", owner: "Business analyst", status: "Unanswered", suggestions: [], affects: [], goalId: goal?.id });
               addAudit(p, "Adopted clarification question", id, question);
-            })}>Track question</Button><Button onClick={() => dismissSuggestion("question", question)}>Reject</Button></div></div>)}</details>}
-          {suggestedGoals.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Possible next work <small>{suggestedGoals.length}</small></summary>{suggestedGoals.map(suggestion =>
-            <div className="setup-agent-question" key={`${suggestion.kind}:${suggestion.title}`}><span><strong>{suggestion.title}</strong><small>{suggestion.reason}</small></span><div className="agent-suggestion-actions"><Button onClick={() => go("goals?new=1")}>Review in goal setup</Button><Button onClick={() => dismissSuggestion("goal", `${suggestion.kind}:${suggestion.title}`)}>Reject</Button></div></div>)}</details>}
+            })}>Track question</Button><Button label={`Reject question: ${question}`} onClick={() => dismissSuggestion("question", question)}>Reject</Button></div></div>;
+          })}</details>}
+          {suggestedGoals.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Possible next work <small>{suggestedGoals.length}</small></summary><p>Open goal setup and select a suggestion there to use it.</p>{suggestedGoals.map(suggestion =>
+            <div className="setup-agent-question" key={`${suggestion.kind}:${suggestion.title}`}><span><strong>{suggestion.title}</strong><small>{suggestion.reason}</small></span><div className="agent-suggestion-actions"><Button onClick={() => go("goals?new=1")}>Open goal setup</Button><Button onClick={() => dismissSuggestion("goal", `${suggestion.kind}:${suggestion.title}`)}>Reject</Button></div></div>)}</details>}
           {suggestedPolicies.length > 0 && <details className="setup-agent-suggestions agent-suggestion-group"><summary>Governance to review <small>{suggestedPolicies.length}</small></summary>{suggestedPolicies.map(point =>
             <div className="setup-agent-question" key={point}><span>{point}</span><div className="agent-suggestion-actions"><Button onClick={() => go("team")}>Review settings</Button><Button onClick={() => dismissSuggestion("governance", point)}>Reject</Button></div></div>)}</details>}
         </details>}
-      <div className="overview-grid">
-        <Card className="next-action-card">
-          <div className="gate-icon">
-            <span>{goal ? goal.gateIndex + 1 : "—"}</span>
-          </div>
-          <div>
-            <span className="eyebrow">
-              {goal ? "Active goal" : "Project setup"}
-            </span>
-            <h2>{goal?.title ?? "Define the first project goal"}</h2>
-            <p>
-              {goal?.description ??
-                "Start a BA Mate goal conversation to establish the first governed workflow. This fresh project contains no generated artifacts yet."}
-            </p>
-            <Button
-              kind="primary"
-              onClick={() => go(goal ? "workflow" : "goals")}
-            >
-              {goal ? `Open ${goal.gate} workflow` : "Create first goal"}{" "}
-              <ArrowRight size={16} />
-            </Button>
-          </div>
-        </Card>
-        <Card
-          title="Review readiness"
-          description="Human review and evidence status"
-        >
-          <div className="metric-grid">
-            <Metric
-              label="Quality"
-              value="Not assessed"
-              detail={
-                hasArtifacts ? "Requires independent BA assessment" : "No artifacts yet"
-              }
-              tone={hasArtifacts ? "warning" : "neutral"}
-            />
-            <Metric
-              label="Traceability"
-              value={`${coverage}%`}
-              detail={`${project.traceLinks.filter((l) => l.status === "Verified").length} verified links`}
-              tone={
-                project.traceLinks.length
-                  ? coverage >= 75
-                    ? "success"
-                    : "warning"
-                  : "neutral"
-              }
-            />
-            <Metric
-              label="Open questions"
-              value={openClarifications}
-              detail="Across all priorities"
-              tone="warning"
-            />
-            <Metric
-              label="Blocking"
-              value={blockers(project)}
-              detail="Approval gate"
-              tone={blockers(project) ? "danger" : "success"}
-            />
-          </div>
-        </Card>
-      </div>
-      <WorkflowStrip project={project} onSelect={() => go("workflow")} />
+      <WorkflowStrip project={project} onSelect={() => go(goal ? "workflow" : "goals")} />
       <Card
         className="overview-goals-card"
         title="Project goals"
@@ -1076,9 +1096,8 @@ function ProjectOverview({
                 </i>
                 <span>
                   <b>{e.action}</b>
-                  <small>
-                    {e.object} · {e.actor} · {e.at}
-                  </small>
+                  {e.detail && <small className="activity-detail" title={e.detail}>{e.detail}</small>}
+                  <small>{e.actor} · {formatWorkspaceTime(e.at)}</small>
                 </span>
               </div>
             ))}
@@ -1167,7 +1186,8 @@ function WorkflowStrip({
   onSelect: () => void;
 }) {
   const goal = activeGoal(project);
-  const gateIndex = goal?.gateIndex ?? project.gateIndex;
+  if (!goal) return <Card className="workflow-card" title="Goal workflow" description={project.goals.length ? "No active goal. Open saved goals to review completed work or start a new goal." : "Start a goal to initialize its workflow."}><Button onClick={onSelect}>{project.goals.length ? "Manage goals" : "Start a goal"}</Button></Card>;
+  const gateIndex = goal.gateIndex;
   return (
     <Card
       className="workflow-card"
@@ -1182,6 +1202,7 @@ function WorkflowStrip({
         {gates.map((gate, index) => (
           <button
             key={gate}
+            aria-label={`${gate}: ${index < gateIndex ? "complete" : index === gateIndex ? "in progress" : "not started"}. Open current workflow`}
             className={classNames(
               index < gateIndex && "complete",
               index === gateIndex && "current",
@@ -1237,7 +1258,7 @@ function StageReadinessChecklist({
               <small>{item.description}</small>
             </span>
             {!item.complete && (
-              <Button kind="ghost" onClick={() => onNavigate(item.route)}>
+              <Button kind="ghost" label={`Open ${item.label}`} onClick={() => onNavigate(item.route)}>
                 Open <ArrowRight size={15} />
               </Button>
             )}
@@ -1248,7 +1269,7 @@ function StageReadinessChecklist({
   );
 }
 
-function WorkflowView({
+export function WorkflowView({
   project,
   update,
   go,
@@ -1264,12 +1285,10 @@ function WorkflowView({
   const [filter, setFilter] = useState<
     "All" | "Blocking" | "Important" | "Optional"
   >("All");
+  const clarificationQueueRef = useRef<HTMLDivElement>(null);
   const goal = activeGoal(project);
-  const visible = project.clarifications.filter(
-    (q) =>
-      (!goal || !q.goalId || q.goalId === goal.id) &&
-      (filter === "All" || q.priority === filter),
-  );
+  const goalQuestions = project.clarifications.filter(q => !goal || !q.goalId || q.goalId === goal.id);
+  const visible = goalQuestions.filter(q => filter === "All" || q.priority === filter);
   const updateQuestion = (id: string, patch: Partial<Clarification>) => {
     update((p) => {
       const q = p.clarifications.find((x) => x.id === id);
@@ -1282,11 +1301,13 @@ function WorkflowView({
         p,
         "Updated clarification",
         id,
-        `Status changed to ${patch.status ?? q?.status}.`,
+        patch.status === "Answered" ? `Answer recorded; confirmed by ${patch.answerAuthority?.trim() || "not recorded"} (self-reported).` : `Status changed to ${patch.status ?? q?.status}.`,
       );
     });
     const label =
-      patch.status === "Answered"
+      patch.status === "Unanswered" && patch.question
+        ? "Question changed — answer needs reconfirmation"
+        : patch.status === "Answered"
         ? "Answer recorded"
         : patch.status === "Deferred"
           ? "Clarification deferred"
@@ -1361,6 +1382,9 @@ function WorkflowView({
           "Create or activate a goal before running the governed workflow."
         }
         actions={
+          <>
+          <a className="button" href="#workbench-title"><Sparkles size={16} /> AI assistance</a>
+          {goal && currentGateIndex === 5 ? <Button onClick={() => go("goals")}>Manage goal completion <ArrowRight size={17} /></Button> :
           <Button
             kind="primary"
             disabled={
@@ -1375,27 +1399,27 @@ function WorkflowView({
           >
             {`Advance to ${gates[Math.min(5, currentGateIndex + 1)]}`}{" "}
             <ArrowRight size={17} />
-          </Button>
+          </Button>}
+          </>
         }
       />
       <StageReadinessChecklist
         gate={goal?.gate ?? project.gate}
         items={readinessItems}
-        onNavigate={go}
+        onNavigate={route => { if (route === "workflow") { setFilter("All"); clarificationQueueRef.current?.scrollIntoView({ block: "start" }); clarificationQueueRef.current?.focus({ preventScroll: true }); } else go(route); }}
       />
-      <WorkflowWorkbench project={project} update={update} />
-      <WorkflowStrip project={project} onSelect={() => {}} />
       <div className="workspace-split">
-        <div>
+        <div ref={clarificationQueueRef} tabIndex={-1}>
           <Card
             title="Clarification queue"
             description="Accept, edit, answer, defer or discard suggestions for the active goal."
             actions={
-              <div className="segmented">
+              <div className="segmented" role="group" aria-label="Filter clarifications by priority">
                 {(["All", "Blocking", "Important", "Optional"] as const).map(
                   (x) => (
                     <button
                       className={filter === x ? "active" : ""}
+                      aria-pressed={filter === x}
                       key={x}
                       onClick={() => setFilter(x)}
                     >
@@ -1407,19 +1431,20 @@ function WorkflowView({
             }
           >
             <div className="question-list">
-              {visible.map((q) => (
-                <ClarificationCard
-                  key={q.id}
+              {goalQuestions.map((q) => (
+                <div key={`${project.id}:${q.id}`} hidden={filter !== "All" && q.priority !== filter}><ClarificationCard
                   item={q}
+                  projectId={project.id}
                   onUpdate={(patch) => updateQuestion(q.id, patch)}
-                />
+                /></div>
               ))}
             </div>
             {visible.length === 0 && (
               <EmptyState
                 icon={<CircleHelp />}
-                title="No clarifications yet"
-                description="BA Mate will add questions as the active goal and its context are analyzed."
+                title={filter === "All" ? "No clarifications yet" : `No ${filter.toLowerCase()} clarifications`}
+                description={filter === "All" ? "Add a clarification or use AI assistance to identify questions for this goal." : "Choose another priority or show all clarifications."}
+                action={filter !== "All" ? <Button onClick={() => setFilter("All")}>Show all clarifications</Button> : undefined}
               />
             )}
             <Button
@@ -1499,20 +1524,40 @@ function WorkflowView({
           </Card>
         </aside>
       </div>
+      <WorkflowStrip project={project} onSelect={() => {}} />
+      <WorkflowWorkbench project={project} update={update} />
     </>
   );
 }
 
-function ClarificationCard({
+const clarificationDrafts = new Map<string, { answer: string; authority: string; base: string }>();
+
+export function ClarificationCard({
   item,
   onUpdate,
+  projectId,
 }: {
   item: Clarification;
   onUpdate: (patch: Partial<Clarification>) => void;
+  projectId?: string;
 }) {
+  const draftKey = projectId ? JSON.stringify([projectId, item.id]) : undefined;
+  const base = JSON.stringify([item.question, item.answer, item.answerAuthority, item.status, item.version]);
+  const cached = draftKey ? clarificationDrafts.get(draftKey) : undefined;
+  const initialAnswer = item.answer ?? "";
+  const initialAuthority = item.status === "Answered" ? item.answerAuthority ?? "" : "";
   const [editing, setEditing] = useState(false);
   const [question, setQuestion] = useState(item.question);
-  const [custom, setCustom] = useState(item.answer ?? "");
+  const [custom, setCustom] = useState(cached?.answer ?? initialAnswer);
+  const [authority, setAuthority] = useState(cached?.authority ?? initialAuthority);
+  const updateDraft = (answer: string, confirmedBy: string) => {
+    setCustom(answer);
+    setAuthority(confirmedBy);
+    if (draftKey) {
+      if (answer === initialAnswer && confirmedBy === initialAuthority) clarificationDrafts.delete(draftKey);
+      else clarificationDrafts.set(draftKey, { answer, authority: confirmedBy, base });
+    }
+  };
   return (
     <article
       className={classNames("question-card", item.priority.toLowerCase())}
@@ -1535,12 +1580,21 @@ function ClarificationCard({
         <StatusBadge value={item.status} />
       </header>
       {editing ? (
-        <input
+        <textarea
+          aria-label={`Question for ${item.id}`}
           className="title-input"
+          rows={3}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onBlur={() => {
-            onUpdate({ question });
+            const revised = question.trim();
+            if (!revised) setQuestion(item.question);
+            else if (revised !== item.question) {
+              if (item.status === "Answered") {
+                setAuthority("");
+                onUpdate({ question: revised, status: "Unanswered" });
+              } else onUpdate({ question: revised });
+            }
             setEditing(false);
           }}
           autoFocus
@@ -1550,9 +1604,11 @@ function ClarificationCard({
       )}
       <p>{item.rationale}</p>
       <div className="provenance">
-        <Link2 size={14} /> {item.sourceId}
+        <Link2 size={14} /> Recorded context: {(item.sourceIds?.length ? item.sourceIds : [item.sourceId]).join(", ")}
         <span>Owner: {item.owner}</span>
-        <span>Affects: {item.affects.join(", ")}</span>
+        {item.status === "Answered" && <span>Answer confirmed by: {item.answerAuthority || "Not recorded"}</span>}
+        {item.status === "Unanswered" && item.answer && <span>Previous answer needs reconfirmation; previously attributed to: {item.answerAuthority || "Not recorded"}</span>}
+        {item.affects.length > 0 && <span>Affects: {item.affects.join(", ")}</span>}
       </div>
       {item.status !== "Discarded" && (
         <div className="answer-options">
@@ -1561,23 +1617,31 @@ function ClarificationCard({
               key={s}
               className={item.answer === s ? "selected" : ""}
               onClick={() => {
-                setCustom(s);
-                onUpdate({ answer: s, status: "Answered" });
+                updateDraft(s, authority);
               }}
             >
               {s}
             </button>
           ))}
-          <div>
-            <input
+          <div className="clarification-answer-form">
+            <label className="clarification-answer-field">Answer
+            <textarea
               value={custom}
-              onChange={(e) => setCustom(e.target.value)}
-              placeholder="Custom answer…"
+              onChange={(e) => updateDraft(e.target.value, authority)}
+              placeholder="Enter the confirmed answer…"
+              aria-label={`Answer for ${item.id}`}
+              rows={3}
             />
+            </label>
+            <label className="clarification-authority-field">Confirmed by <input value={authority} onChange={(e) => updateDraft(custom, e.target.value)} placeholder="Stakeholder name or role" aria-label={`Answer confirmed by for ${item.id}`} /></label>
+            <small>Record who confirmed the answer; BA Mate does not authenticate that identity.</small>
+            {draftKey && clarificationDrafts.has(draftKey) && <small role="status">Answer not saved or included in backups. It stays available while BA Mate is open; save it before closing or reloading.</small>}
+            {cached && cached.base !== base && <small role="alert">This question or its saved answer changed since the draft was started. Review the answer and who confirmed it before saving.</small>}
+            {draftKey && clarificationDrafts.has(draftKey) && <button type="button" onClick={() => { clarificationDrafts.delete(draftKey); setCustom(initialAnswer); setAuthority(initialAuthority); }}>Discard answer draft</button>}
             <Button
               kind="primary"
-              disabled={!custom.trim()}
-              onClick={() => onUpdate({ answer: custom, status: "Answered" })}
+              disabled={!custom.trim() || !authority.trim()}
+              onClick={() => { if (draftKey) clarificationDrafts.delete(draftKey); onUpdate({ answer: custom.trim(), answerAuthority: authority.trim(), status: "Answered" }); }}
             >
               Save answer
             </Button>
@@ -1591,7 +1655,7 @@ function ClarificationCard({
         <button onClick={() => onUpdate({ status: "Deferred" })}>
           <Clock3 size={15} /> Defer
         </button>
-        <button onClick={() => onUpdate({ status: "Discarded" })}>
+        <button onClick={() => { if (draftKey) clarificationDrafts.delete(draftKey); onUpdate({ status: "Discarded" }); }}>
           <Trash2 size={15} /> Discard
         </button>
         {item.status === "Discarded" && (
@@ -1604,66 +1668,35 @@ function ClarificationCard({
   );
 }
 
-function SourcesView({
-  project,
-  update,
-}: {
-  project: Project;
-  update: (fn: (p: Project) => void) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
-  const [selected, setSelected] = useState(project.sources[0]?.id);
-  const source = project.sources.find((s) => s.id === selected);
-  const goal = activeGoal(project);
-  const [sourceQuery, setSourceQuery] = useState("");
-  useEffect(() => { if (!project.sources.some(item => item.id === selected)) setSelected(project.sources[0]?.id); }, [project.sources, selected]);
-  const searchResults = useMemo(() => {
-    const needle = sourceQuery.trim().toLowerCase();
-    if (needle.length < 2) return [];
-    return project.sources.flatMap(item => (item.passages?.length ? item.passages : [{ locator: "Document", text: item.content ?? "" }])
-      .filter(passage => `${item.name} ${item.relativePath ?? ""} ${passage.text}`.toLowerCase().includes(needle))
-      .slice(0, 30).map(passage => ({ source: item, passage }))).slice(0, 40);
-  }, [project.sources, sourceQuery]);
-  const [extracting, setExtracting] = useState(false);
-  const [verifyingSource, setVerifyingSource] = useState<string>();
-  const attach = async (files: FileList | null) => {
-    if (!files?.length || extracting) return;
-    const selectedFiles = Array.from(files).filter(file => isSupportedSourceName(file.name));
-    const skipped = files.length - selectedFiles.length;
-    if (!selectedFiles.length) { notify("This selection does not contain a supported source file.", "warning"); if (inputRef.current) inputRef.current.value = ""; if (folderInputRef.current) folderInputRef.current.value = ""; return; }
-    setExtracting(true);
+const folderSourceFingerprint = (project: Project) => JSON.stringify([project.id, project.workspaceId, project.workspaceKind, project.workspacePath, project.workspaceFolders, project.sources]);
+const workspaceLocationFingerprint = (project: Project) => JSON.stringify([project.id, project.workspaceId, project.workspaceKind, project.workspacePath]);
+
+function useFolderConnection(project: Project, update: (fn: (p: Project) => void) => void) {
+  const [connecting, setConnecting] = useState(false);
+  const [pending, setPending] = useState<{ workspaceId: string; folderName: string; path: string; missing: number }>();
+  useEffect(() => {
+    if (!pending) return;
+    if (project.workspaceId === pending.workspaceId) {
+      const message = pending.missing
+        ? `${pending.folderName} is connected. ${pending.missing} source original${pending.missing === 1 ? " is" : "s are"} unavailable; reconnect and review ${pending.missing === 1 ? "it" : "them"} in Sources.`
+        : `${pending.folderName} is connected and contains the available source originals.`;
+      appNotice(message, pending.missing ? "warning" : "success", "Project folder connected");
+    } else {
+      appNotice(`The project or sources changed while copying. The project folder was not switched. A copy may be at ${pending.path}; review it before retrying.`, "warning", "Folder connection needs review");
+    }
+    setPending(undefined);
+  }, [pending, project]);
+  const connect = async () => {
+    if (connecting) return;
+    setConnecting(true);
     try {
-      const imported: { file: File; result: Awaited<ReturnType<typeof importSource>> }[] = [];
-      for (const file of selectedFiles) {
-        const result = await importSource(file);
-        imported.push({ file, result });
-      }
-      const reference = await ensureProjectWorkspace(project);
-      const written = await writeProjectFiles(reference, imported.map(({ file, result }) => ({ name: file.name, relativePath: file.webkitRelativePath || `Uploaded Sources/${file.name}`, data: result.original_base64 })));
-      const created = imported.map((item, index) => ({ ...item, sourceId: uid("SRC"), storedPath: written[index] ?? (item.file.webkitRelativePath || `Uploaded Sources/${item.file.name}`) }));
-      update(p => {
-        p.workspaceId = reference.workspaceId;
-        p.workspaceKind = reference.workspaceKind;
-        p.workspacePath = reference.displayPath;
-        p.folderName = reference.folderName;
-        for (const { file, result, sourceId, storedPath } of created) {
-          p.sources.push({ id: sourceId, name: storedPath.split("/").at(-1) ?? file.name, relativePath: storedPath, type: sourceTypeForName(file.name), status: "Needs review", classification: "Project only", provenance: "Imported on " + new Date().toISOString(), concepts: [], approved: false, immutable: true, content: result.content, sha256: result.sha256, version: 1, passages: result.passages, extractionLimitations: result.limitations });
-          addAudit(p, "Extracted source for review", sourceId, `${file.name}; original copied into the project folder and retained for review.`);
-        }
-      });
-      if (created.length) setSelected(created.at(-1)!.sourceId);
-      notify("Sources imported and copied into the project folder. Review extracted text before approval.", "success");
-      if (skipped) notify(`${skipped} unsupported or hidden file${skipped === 1 ? " was" : "s were"} skipped.`, "warning");
-    } catch (e) { notify((e as Error).message, "danger", "Source import failed"); }
-    finally { setExtracting(false); if (inputRef.current) inputRef.current.value = ""; if (folderInputRef.current) folderInputRef.current.value = ""; }
-  };
-  const chooseFolder = async () => {
-    try {
+      const original = folderSourceFingerprint(project);
       const candidate = await chooseProjectFolder();
       if (!candidate) return;
       const copy = await copyProjectToWorkspace(project, candidate);
-      update((p) => {
+      setPending({ workspaceId: copy.workspaceId!, folderName: copy.folderName, path: copy.workspacePath || copy.folderName, missing: copy.sources.filter(source => !source.relativePath && !source.originalBase64).length });
+      update(p => {
+        if (folderSourceFingerprint(p) !== original) return;
         p.folderName = copy.folderName;
         p.workspaceId = copy.workspaceId;
         p.workspaceKind = copy.workspaceKind;
@@ -1673,25 +1706,117 @@ function SourcesView({
           const moved = copy.sources.find(item => item.id === source.id);
           if (moved) { source.relativePath = moved.relativePath; source.originalBase64 = moved.originalBase64; source.approved = moved.approved; source.status = moved.status; }
         }
-        addAudit(
-          p,
-          "Connected local folder",
-          copy.folderName,
-          `${copy.sources.length} original source${copy.sources.length === 1 ? " was" : "s were"} copied into the folder.`,
-        );
+        addAudit(p, "Connected project folder", copy.folderName, "Available source originals were copied to the connected folder; unavailable originals require review.");
       });
-      appNotice(
-        `${copy.folderName} is connected and contains the project's original sources.`,
-        "success",
-        "Folder connected",
-      );
     } catch (error) {
-      if ((error as DOMException).name !== "AbortError")
-        appNotice(
-          "The folder could not be connected. The existing local workspace remains unchanged.",
-          "danger",
-        );
+      if (!(error instanceof DOMException && error.name === "AbortError")) appNotice(error instanceof Error ? error.message : "The folder could not be connected.", "danger", "Folder connection failed");
+    } finally { setConnecting(false); }
+  };
+  return { connect, connecting };
+}
+
+export function SourcesView({
+  project,
+  update,
+}: {
+  project: Project;
+  update: (fn: (p: Project) => void) => void;
+}) {
+  const location = useLocation();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const reattachInputRef = useRef<HTMLInputElement>(null);
+  const [selected, setSelected] = useState<string | undefined>(project.sources[0]?.id);
+  const [missingSource, setMissingSource] = useState<string>();
+  const source = project.sources.find((s) => s.id === selected);
+  const goal = activeGoal(project);
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [selectedPassage, setSelectedPassage] = useState<{ sourceId: string; locator: string; text: string }>();
+  const passageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const id = new URLSearchParams(location.search).get("artifact"); if (!id) { setMissingSource(undefined); return; } if (project.sources.some(item => item.id === id)) { setSelected(id); setMissingSource(undefined); setSourceQuery(""); } else { setSelected(undefined); setMissingSource(id); } }, [location.search, project.id]);
+  useEffect(() => { if (!missingSource && !project.sources.some(item => item.id === selected)) setSelected(project.sources[0]?.id); }, [project.sources, selected, missingSource]);
+  const searchResults = useMemo(() => {
+    return searchSourcePassages(project.sources, sourceQuery);
+  }, [project.sources, sourceQuery]);
+  useEffect(() => { if (selectedPassage && selectedPassage.sourceId === source?.id) passageRef.current?.focus(); }, [selectedPassage, source?.id]);
+  const [extracting, setExtracting] = useState(false);
+  const { connect: chooseFolder, connecting: connectingFolder } = useFolderConnection(project, update);
+  const [verifyingSource, setVerifyingSource] = useState<string>();
+  const [pendingSourceOperation, setPendingSourceOperation] = useState<
+    | { kind: "reattach"; id: string; hash?: string; path: string; workspaceId?: string; location: string }
+    | { kind: "import"; ids: string[]; workspaceId: string; location: string; skipped: number }
+  >();
+  useEffect(() => {
+    if (!pendingSourceOperation) return;
+    if (pendingSourceOperation.kind === "reattach") {
+      const item = project.sources.find(source => source.id === pendingSourceOperation.id);
+      if (project.workspaceId === pendingSourceOperation.workspaceId && item?.relativePath === pendingSourceOperation.path && item.sha256 === pendingSourceOperation.hash) {
+        appNotice("The matching original was copied into the project folder. Review the extraction and any affected evidence links before using it.", "info", "Original reattached");
+      } else {
+        appNotice(`The source or project folder changed while copying. The source was not reattached; check ${pendingSourceOperation.location} for the copied file before trying again.`, "warning", "Original needs review");
+      }
+    } else if (project.workspaceId === pendingSourceOperation.workspaceId && pendingSourceOperation.ids.every(id => project.sources.some(source => source.id === id))) {
+      setSelected(pendingSourceOperation.ids.at(-1));
+      notify("Sources imported and copied into the project folder. Review extracted text before approval.", "success");
+      if (pendingSourceOperation.skipped) notify(`${pendingSourceOperation.skipped} unsupported or hidden file${pendingSourceOperation.skipped === 1 ? " was" : "s were"} skipped.`, "warning");
+    } else {
+      appNotice(`The project folder or its sources changed during import. The source records were not added; check ${pendingSourceOperation.location} for copied files before retrying.`, "warning", "Source import needs review");
     }
+    setPendingSourceOperation(undefined);
+  }, [pendingSourceOperation, project]);
+  const reattach = async (file?: File) => {
+    if (!file || !source || verifyingSource || extracting || connectingFolder || pendingSourceOperation) return;
+    const targetId = source.id, expectedHash = source.sha256;
+    const originalWorkspace = workspaceLocationFingerprint(project);
+    const originalSource = JSON.stringify(source);
+    setVerifyingSource(targetId);
+    try {
+      const path = await reattachSourceOriginal(project, source, file);
+      setPendingSourceOperation({ kind: "reattach", id: targetId, hash: expectedHash, path, workspaceId: project.workspaceId, location: project.workspacePath || project.folderName });
+      update(p => {
+        const item = p.sources.find(candidate => candidate.id === targetId);
+        if (!item || workspaceLocationFingerprint(p) !== originalWorkspace || JSON.stringify(item) !== originalSource || item.relativePath || item.originalBase64 || item.sha256 !== expectedHash) return;
+        item.relativePath = path;
+        item.analysisSignature = undefined;
+        item.approved = false;
+        item.status = "Needs review";
+        for (const linkedGoal of p.goals) if (linkedGoal.sourceRevisionPins) delete linkedGoal.sourceRevisionPins[item.id];
+        item.extractionLimitations = (item.extractionLimitations ?? []).filter(note => !note.startsWith("The original file is unavailable in this backup."));
+        addAudit(p, "Reattached matching original", targetId, `${path}; extraction and linked evidence require review.`);
+      });
+    } catch (error) { appNotice(error instanceof Error ? error.message : "The original could not be reattached.", "warning", "Original not reattached"); }
+    finally { setVerifyingSource(undefined); if (reattachInputRef.current) reattachInputRef.current.value = ""; }
+  };
+  const attach = async (files: FileList | null) => {
+    if (!files?.length || extracting || verifyingSource || connectingFolder || pendingSourceOperation) return;
+    const selectedFiles = Array.from(files).filter(file => isSupportedSourceName(file.name));
+    const skipped = files.length - selectedFiles.length;
+    if (!selectedFiles.length) { notify("This selection does not contain a supported source file.", "warning"); if (inputRef.current) inputRef.current.value = ""; if (folderInputRef.current) folderInputRef.current.value = ""; return; }
+    setExtracting(true);
+    const originalWorkspace = workspaceLocationFingerprint(project);
+    try {
+      const imported: { file: File; result: Awaited<ReturnType<typeof importSource>> }[] = [];
+      for (const file of selectedFiles) {
+        const result = await importSource(file);
+        imported.push({ file, result });
+      }
+      const reference = await ensureProjectWorkspace(project);
+      const written = await writeProjectFiles(reference, imported.map(({ file, result }) => ({ name: file.name, relativePath: file.webkitRelativePath || `Uploaded Sources/${file.name}`, data: result.original_base64 })));
+      const created = imported.map((item, index) => ({ ...item, sourceId: uid("SRC"), storedPath: written[index] ?? (item.file.webkitRelativePath || `Uploaded Sources/${item.file.name}`) }));
+      setPendingSourceOperation({ kind: "import", ids: created.map(item => item.sourceId), workspaceId: reference.workspaceId, location: reference.displayPath || reference.folderName, skipped });
+      update(p => {
+        if (workspaceLocationFingerprint(p) !== originalWorkspace || created.some(item => p.sources.some(source => source.relativePath === item.storedPath))) return;
+        p.workspaceId = reference.workspaceId;
+        p.workspaceKind = reference.workspaceKind;
+        p.workspacePath = reference.displayPath;
+        p.folderName = reference.folderName;
+        for (const { file, result, sourceId, storedPath } of created) {
+          p.sources.push({ id: sourceId, name: storedPath.split("/").at(-1) ?? file.name, relativePath: storedPath, type: sourceTypeForName(file.name), status: "Needs review", classification: "Project only", provenance: "Imported on " + new Date().toISOString(), concepts: [], approved: false, immutable: true, content: result.content, sha256: result.sha256, version: 1, passages: result.passages, extractionLimitations: result.limitations });
+          addAudit(p, "Extracted source for review", sourceId, `${file.name}; original copied into the project folder and retained for review.`);
+        }
+      });
+    } catch (e) { notify((e as Error).message, "danger", "Source import failed"); }
+    finally { setExtracting(false); if (inputRef.current) inputRef.current.value = ""; if (folderInputRef.current) folderInputRef.current.value = ""; }
   };
   return (
     <>
@@ -1719,23 +1844,24 @@ function SourcesView({
               accept={SOURCE_ACCEPT}
               onChange={(e) => attach(e.target.files)}
             />
-            <Button onClick={chooseFolder}>
+            <Button onClick={chooseFolder} disabled={connectingFolder || extracting || !!verifyingSource || !!pendingSourceOperation}>
               <Folder size={17} /> Connect folder
             </Button>
-            <Button kind="primary" onClick={() => inputRef.current?.click()}>
+            <Button kind="primary" disabled={connectingFolder || extracting || !!verifyingSource || !!pendingSourceOperation} onClick={() => inputRef.current?.click()}>
               <Upload size={17} /> Add files
             </Button>
-            <Button onClick={() => folderInputRef.current?.click()}>
+            <Button disabled={connectingFolder || extracting || !!verifyingSource || !!pendingSourceOperation} onClick={() => folderInputRef.current?.click()}>
               <Folder size={17} /> Add folder
             </Button>
           </>
         }
       />
       <div className="source-search-panel">
-        <label><Search size={17} /><input aria-label="Search project source text" value={sourceQuery} onChange={event => setSourceQuery(event.target.value)} placeholder="Search files and extracted text across this project…" /></label>
-        {sourceQuery.trim().length >= 2 && <div className="source-search-results" role="status">{searchResults.length ? searchResults.map(({ source: item, passage }, index) => <button key={`${item.id}:${passage.locator}:${index}`} onClick={() => setSelected(item.id)}><b>{item.relativePath ?? item.name} · {passage.locator}</b><span>{passage.text.slice(0, 200)}</span><small>{item.approved ? "Reviewed source" : "Unreviewed extraction — verify before using as evidence"}</small></button>) : <p>No matching extracted text. Files without readable text may need a transcript or OCR copy.</p>}</div>}
+        <label><Search size={17} /><input aria-label="Search project source text" value={sourceQuery} onChange={event => setSourceQuery(event.target.value)} placeholder="Search files and extracted text across this project…" />{sourceQuery && <button type="button" onClick={() => setSourceQuery("")} aria-label="Clear source search"><X size={16} /></button>}</label>
+        {sourceQuery.trim().length >= 2 && <div className="source-search-results" role="status">{searchResults.length ? searchResults.map(({ source: item, passage, before, match, after, nameMatch }, index) => <button key={`${item.id}:${passage.locator}:${index}`} onClick={() => { setMissingSource(undefined); setSelected(item.id); setSelectedPassage({ sourceId: item.id, locator: passage.locator, text: passage.text }); }}><b>{item.relativePath ?? item.name} · {passage.locator}</b><span>{before}{match && <mark>{match}</mark>}{after}</span><small>{nameMatch ? "Filename match · " : "Search preview; spacing normalized · "}{item.approved ? "Reviewed source" : "Unreviewed extraction — verify before using as evidence"}</small></button>) : <p>No matching extracted text. Files without readable text may need a transcript or OCR copy.</p>}</div>}
       </div>
       {extracting && <p role="status">Reading source contents…</p>}
+      {missingSource && <p role="status" className="context-note warning">{missingSource} is no longer available. Choose another source from the list.</p>}
       <div className="source-layout">
         <Card
           title={`${project.sources.length} project ${project.sources.length === 1 ? "source" : "sources"}`}
@@ -1746,7 +1872,7 @@ function SourcesView({
               <button
                 key={s.id}
                 className={s.id === selected ? "active" : ""}
-                onClick={() => setSelected(s.id)}
+                onClick={() => { setMissingSource(undefined); setSelected(s.id); setSelectedPassage(undefined); }}
               >
                 <i>
                   <FileText size={19} />
@@ -1765,6 +1891,12 @@ function SourcesView({
         </Card>
         {source && (
           <Card className="source-detail">
+            {!source.relativePath && !source.originalBase64 && <div className="context-note warning">
+              <strong>Original source unavailable</strong>
+              <p>{source.sha256 ? "Choose the exact original to reconnect it to this record. Its file hash must match; review is still required." : "This record has no file hash. Add the source as a new file and review the evidence links."}</p>
+              <input ref={reattachInputRef} type="file" hidden aria-label="Choose matching original" onChange={event => void reattach(event.target.files?.[0])} />
+              {source.sha256 && <Button disabled={!!verifyingSource || extracting || connectingFolder || !!pendingSourceOperation} onClick={() => reattachInputRef.current?.click()}>{verifyingSource === source.id ? "Checking original…" : "Reattach matching original"}</Button>}
+            </div>}
             <header className="detail-heading">
               <div>
                 <FileCheck2 />
@@ -1849,6 +1981,7 @@ function SourcesView({
                 <dd>Immutable original</dd>
               </div>
             </dl>
+            {selectedPassage?.sourceId === source.id && <div ref={passageRef} tabIndex={-1} className="source-selected-passage"><h3>Selected passage · {selectedPassage.locator}</h3><p>This is the original extracted passage. Compare it with the source before relying on it.</p><pre className="source-transcript">{selectedPassage.text}</pre><button type="button" onClick={() => setSelectedPassage(undefined)}>Close passage</button></div>}
             <h3>Extracted source text</h3>
             <pre className="source-transcript">{source.content || source.extractionLimitations?.[0] || "The original is stored, but no searchable text is available."}</pre>
             {(source.originalBase64 || source.relativePath && project.workspaceId && project.workspaceKind) && <Button onClick={() => { void (async () => {
@@ -1941,11 +2074,12 @@ function RegistersView({
           </Button>
         }
       />
-      <div className="tabs" role="tablist" aria-label="Project registers">
+      <div className="tabs" role="tablist" aria-label="Project registers" onKeyDown={onTabListKeyDown}>
         {types.map((type) => (
           <button
             role="tab"
             aria-selected={active === type}
+            tabIndex={active === type ? 0 : -1}
             className={active === type ? "active" : ""}
             onClick={() => {
               setActive(type);
@@ -1972,9 +2106,10 @@ function RegistersView({
           </div>
           {items.map((item) => (
             <div className="table-row" key={item.id}>
-              <b>{item.id}</b>
-              <input
+              <b className="register-id">{item.id}</b>
+              <textarea
                 aria-label={`${item.id} title`}
+                rows={2}
                 value={item.title}
                 onChange={(e) =>
                   update((p) => {
@@ -1983,8 +2118,8 @@ function RegistersView({
                   })
                 }
               />
-              <span>{item.owner}</span>
-              <span>
+              <span className="register-owner">{item.owner}</span>
+              <span className="register-impact">
                 {item.severity ? (
                   <Badge
                     tone={
@@ -2001,17 +2136,21 @@ function RegistersView({
                   "—"
                 )}
               </span>
-              <StatusBadge value={item.status} />
-              <IconButton
-                label={`Actions for ${item.id}`}
+              <span className="register-status"><StatusBadge value={item.status} /></span>
+              <button
+                type="button"
+                className="icon-button register-actions-toggle"
+                aria-label={`Edit details for ${item.id}`}
+                aria-expanded={actionsFor === item.id}
                 onClick={() =>
                   setActionsFor((current) =>
                     current === item.id ? undefined : item.id,
                   )
                 }
               >
+                <span>Edit details</span>
                 <ChevronDown size={17} />
-              </IconButton>
+              </button>
               {actionsFor === item.id && (
                 <div
                   className="register-row-actions"
@@ -2137,9 +2276,19 @@ function TraceabilityView({
   project: Project;
   update: (fn: (p: Project) => void) => void;
 }) {
+  const location = useLocation();
   const [selectedLink, setSelectedLink] = useState<string | undefined>(project.traceLinks[0]?.id);
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("artifact");
+    if (!id) return;
+    const links = project.traceLinks.filter(link => link.from === id || link.to === id);
+    const match = links.find(link => link.status !== "Verified") ?? links[0];
+    setSelectedLink(match?.id);
+  }, [location.search, project.id]);
   const [adding, setAdding] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string>();
+  const [checkingLink, setCheckingLink] = useState(false);
+  const checkingLinkRef = useRef(false);
   const objectIds = [
     ...project.sources.map((item) => item.id),
     ...project.requirements.map((item) => item.id),
@@ -2154,6 +2303,33 @@ function TraceabilityView({
   const inspectedLink = project.traceLinks.find(
     (link) => link.id === selectedLink,
   );
+  const inspectedSources = inspectedLink ? project.sources.filter(source => source.id === inspectedLink.from || source.id === inspectedLink.to) : [];
+  const setLinkStatus = async (link: typeof project.traceLinks[number], status: typeof link.status) => {
+    if (checkingLinkRef.current) return;
+    if (status !== "Verified") {
+      update(p => { const current = p.traceLinks.find(item => item.id === link.id); if (current) current.status = status; });
+      return;
+    }
+    checkingLinkRef.current = true; setCheckingLink(true);
+    try {
+      if (!traceEndpointExists(project, link.from) || !traceEndpointExists(project, link.to)) throw new Error("A linked record is missing. Repair or remove this relationship before verification.");
+      if (!passageIsCurrent(project, link)) throw new Error("Reselect the passage from the current source revision before verification.");
+      const fingerprint = traceReviewFingerprint(project, link);
+      for (const source of project.sources.filter(item => item.id === link.from || item.id === link.to)) {
+        if (!source.approved || source.status !== "Analyzed") throw new Error(`${source.name}: review the source before verifying this link.`);
+        try { await verifySourceOriginal(project, source); }
+        catch (error) { throw new Error(`${source.name}: ${error instanceof Error ? error.message : "the original could not be checked."}`); }
+      }
+      update(p => {
+        const current = p.traceLinks.find(item => item.id === link.id);
+        if (!current || !traceEndpointExists(p, current.from) || !traceEndpointExists(p, current.to) || traceReviewFingerprint(p, current) !== fingerprint || !passageIsCurrent(p, current)) return;
+        current.status = "Verified"; current.fromRevision = revisionOf(p, current.from); current.toRevision = revisionOf(p, current.to);
+        addAudit(p, "Reviewed evidence link", current.id, "Marked verified after checking available source originals and current record revisions; semantic support is self-attested.");
+      });
+    } catch (error) {
+      appNotice(error instanceof Error ? error.message : "The source original could not be checked.", "warning", "Link needs review");
+    } finally { checkingLinkRef.current = false; setCheckingLink(false); }
+  };
   const exportMatrix = () => {
     downloadBlob(
       new Blob(
@@ -2224,6 +2400,7 @@ function TraceabilityView({
           </>
         }
       />
+      {new URLSearchParams(location.search).get("artifact") && !project.traceLinks.some(link => link.from === new URLSearchParams(location.search).get("artifact") || link.to === new URLSearchParams(location.search).get("artifact")) && <p role="status" className="context-note">No evidence links were found for {new URLSearchParams(location.search).get("artifact")}. Add a link or choose an existing relationship below.</p>}
       {adding && (
         <Card
           className="trace-link-editor"
@@ -2258,7 +2435,7 @@ function TraceabilityView({
           </div>
         </Card>
       )}
-      <div className="metric-row">
+      <div className="metric-row trace-metrics">
         <Metric
           label="Coverage"
           value={`${traceCoverage(project)}%`}
@@ -2268,7 +2445,7 @@ function TraceabilityView({
         <Metric
           label="Verified"
           value={
-            project.traceLinks.filter((l) => l.status === "Verified").length
+            project.traceLinks.filter((l) => traceDisplayStatus(project, l) === "Verified").length
           }
           detail="Healthy links"
           tone="success"
@@ -2276,23 +2453,23 @@ function TraceabilityView({
         <Metric
           label="Pending"
           value={
-            project.traceLinks.filter((l) => l.status === "Pending").length
+            project.traceLinks.filter((l) => traceDisplayStatus(project, l) === "Pending").length
           }
           detail="Needs review"
           tone="warning"
         />
         <Metric
           label="Broken"
-          value={project.traceLinks.filter((l) => l.status === "Broken").length}
+          value={project.traceLinks.filter((l) => traceDisplayStatus(project, l) === "Broken").length}
           detail="Must repair"
           tone="danger"
         />
       </div>
       <Card
         title="Traceability matrix"
-        description="Select a relationship to inspect provenance and history."
+        description="Select a relationship to review its evidence below. Scroll the list to see more links."
       >
-        <div className="trace-table">
+        <div className="trace-table" role="region" aria-label="Traceability relationships" tabIndex={0}>
           <div className="table-head">
             <span>From</span>
             <span>Relationship</span>
@@ -2306,54 +2483,78 @@ function TraceabilityView({
               aria-pressed={selectedLink === link.id}
               onClick={() => setSelectedLink(link.id)}
             >
-              <b>{link.from}</b>
-              <span>
+              <b className="trace-from">{link.from}</b>
+              <span className="trace-relation">
                 <ArrowRight size={14} />
                 {link.relation}
               </span>
-              <b>{link.to}</b>
-              <StatusBadge value={link.status} />
+              <b className="trace-to">{link.to}</b>
+              <span className="trace-status"><StatusBadge value={traceDisplayStatus(project, link)} /></span>
             </button>
           ))}
         </div>
         {inspectedLink && (
           <div className="trace-inspector">
             <Network />
-            <div>
+            <div className="trace-summary">
               <b>
                 {inspectedLink.id} · {inspectedLink.from}{" "}
                 {inspectedLink.relation} {inspectedLink.to}
               </b>
               <p>
-                This relationship is {inspectedLink.status.toLowerCase()} and
-                retained in the project traceability export and change-impact
-                analysis.
+                Recorded review status: {inspectedLink.status}. The relationship is retained in the project traceability export and change-impact analysis.
               </p>
             </div>
-            <StatusBadge value={inspectedLink.status} />
+            <span className="trace-inspector-status"><StatusBadge value={traceDisplayStatus(project, inspectedLink)} /></span>
+            {(!traceEndpointExists(project, inspectedLink.from) || !traceEndpointExists(project, inspectedLink.to)) && <p role="alert">A linked record is missing. Repair or remove this relationship before verification.</p>}
+            {inspectedLink.status === "Verified" && traceDisplayStatus(project, inspectedLink) === "Pending" && <p role="alert">The recorded verification is for older or incomplete evidence. Set the review status to Pending, then review the current records and verify again.</p>}
+            {inspectedSources.map(inspectedSource => <div className="trace-source-review" key={inspectedSource.id}>
+              <label><span>Add source passage from {inspectedSource.name} (optional)</span>
+                <select value="" onChange={event => {
+                  const locator = event.target.value;
+                  if (!locator) return;
+                  update(p => {
+                    const link = p.traceLinks.find(item => item.id === inspectedLink.id);
+                    const source = p.sources.find(item => item.id === inspectedSource.id);
+                    if (!link || !source || (link.from !== source.id && link.to !== source.id) || (source.passages ?? []).filter(item => item.locator === locator).length !== 1) return;
+                    const pins = sourcePassagePins(link).filter(pin => pin.sourceId !== source.id || pin.locator !== locator);
+                    link.sourcePassage = undefined;
+                    link.sourcePassages = [...pins, { sourceId: source.id, sourceRevision: revisionOf(p, source.id), locator }];
+                    link.status = "Pending";
+                    addAudit(p, "Changed evidence passage", link.id, `${source.id} ${locator}, revision ${revisionOf(p, source.id)} selected for review.`);
+                  });
+                }}>
+                  <option value="">Select a passage</option>
+                  {(inspectedSource.passages ?? []).filter((passage, _, all) => all.filter(item => item.locator === passage.locator).length === 1).map(passage => <option key={passage.locator} value={passage.locator}>{passage.locator}</option>)}
+                </select>
+              </label>
+              <p>Selected locations record where to review, not proof that they support this link.</p>
+              {sourcePassagePins(inspectedLink).map((pin, index) => pin.sourceId === inspectedSource.id && <div className="trace-passage" key={`${pin.sourceId}-${pin.locator}-${index}`}>
+                <p>{passageLabel(project, { ...inspectedLink, sourcePassage: pin, sourcePassages: undefined })} <button className="button secondary" type="button" onClick={() => update(p => {
+                  const link = p.traceLinks.find(item => item.id === inspectedLink.id);
+                  if (!link) return;
+                  const pins = sourcePassagePins(link);
+                  if (JSON.stringify(pins[index]) !== JSON.stringify(pin)) return;
+                  link.sourcePassages = pins.filter((_, i) => i !== index);
+                  link.sourcePassage = undefined; link.status = "Pending";
+                  addAudit(p, "Changed evidence passage", link.id, `${pin.sourceId} ${pin.locator} removed; review required.`);
+                })}>Remove {pin.locator}</button></p>
+                {passageIsCurrent(project, { ...inspectedLink, sourcePassage: pin, sourcePassages: undefined }) && <details><summary>Read {pin.locator}</summary><p>{inspectedSource.passages?.find(item => item.locator === pin.locator)?.text}</p></details>}
+              </div>)}
+              {!passageIsCurrent(project, inspectedLink) && <p role="alert">A selected passage no longer matches the current source revision. Reselect or remove it before verification.</p>}
+            </div>)}
             <label>
               <span>Review status</span>
               <select
                 value={inspectedLink.status}
-                onChange={(event) =>
-                  update((p) => {
-                    const link = p.traceLinks.find(
-                      (item) => item.id === inspectedLink.id,
-                    );
-                    if (link) {
-                      link.status = event.target.value as typeof link.status;
-                      if (link.status === "Verified") {
-                        link.fromRevision = revisionOf(p, link.from);
-                        link.toRevision = revisionOf(p, link.to);
-                      }
-                    }
-                  })
-                }
+                disabled={checkingLink}
+                onChange={(event) => void setLinkStatus(inspectedLink, event.target.value as typeof inspectedLink.status)}
               >
                 <option>Pending</option>
-                <option>Verified</option>
+                <option disabled={!traceEndpointExists(project, inspectedLink.from) || !traceEndpointExists(project, inspectedLink.to) || !passageIsCurrent(project, inspectedLink)}>Verified</option>
                 <option>Broken</option>
               </select>
+              {checkingLink && <small>Checking source originals…</small>}
             </label>
             <Button kind="danger" onClick={() => setPendingDelete(inspectedLink.id)}>
               <Trash2 size={15} /> Delete
@@ -2369,30 +2570,14 @@ function TraceabilityView({
         )}
       </Card>
       <Card
-        title="Dependency map"
-        description="A compact view of downstream change relationships"
+        title="Recorded relationships"
+        description="These are the project's recorded links. Pending or broken links have not been verified; this list does not infer dependencies."
       >
-        <div className="dependency-map">
-          <span className="source-node">
-            SRC-01<small>Source</small>
-          </span>
-          <i>→</i>
-          <span>
-            FR-01<small>Requirement</small>
-          </span>
-          <i>→</i>
-          <span>
-            US-01<small>User story</small>
-          </span>
-          <i>→</i>
-          <span>
-            DGM-01<small>Diagram</small>
-          </span>
-          <b className="branch-line">↘</b>
-          <span className="document-node">
-            DOC-01<small>SRS</small>
-          </span>
-        </div>
+        {project.traceLinks.length ? <ul className="recorded-relationships">
+          {project.traceLinks.map(link => <li key={link.id}>
+            <span>{link.from} → {link.to}</span> <span>{link.relation}</span> <StatusBadge value={traceDisplayStatus(project, link)} />
+          </li>)}
+        </ul> : <p className="context-note">No relationships have been recorded in this project.</p>}
       </Card>
       {pendingDelete && (
         <ConfirmDialog
@@ -2415,28 +2600,51 @@ function TraceabilityView({
   );
 }
 
-function ChangesView({
+export function ChangesView({
   project,
   update,
 }: {
   project: Project;
   update: (fn: (p: Project) => void) => void;
 }) {
+  const location = useLocation();
   const [selectedChange, setSelectedChange] = useState<string | undefined>(project.changes[0]?.id);
+  const [missingChange, setMissingChange] = useState<string>();
   const [editing, setEditing] = useState(false);
+  useEffect(() => { const id = new URLSearchParams(location.search).get("artifact"); setMissingChange(undefined); if (!id) return; setEditing(false); if (project.changes.some(item => item.id === id)) setSelectedChange(id); else { setSelectedChange(undefined); setMissingChange(id); } }, [location.search, project.id]);
   const [pendingDelete, setPendingDelete] = useState<string>();
+  const [pendingChangeAction, setPendingChangeAction] = useState<{ kind: "accept" | "implement" | "revalidate"; changeId: string; patches: { id: string; after: string }[] }>();
+  useEffect(() => {
+    if (!pendingChangeAction) return;
+    const current = project.changes.find(item => item.id === pendingChangeAction.changeId);
+    const expectedStatus = pendingChangeAction.kind === "accept" ? "Accepted" : "Applied";
+    const matches = current && pendingChangeAction.patches.every(expected => current.patches?.some(patch => patch.id === expected.id && patch.after === expected.after && patch.selected && patch.status === expectedStatus));
+    const succeeded = matches && (pendingChangeAction.kind === "accept" ? current.status === "Approved" : pendingChangeAction.kind === "implement" ? current.status === "Implemented" : changeRevalidationIsCurrent(project, current));
+    if (succeeded) {
+      const message = pendingChangeAction.kind === "accept" ? `${current.id} is approved for implementation.`
+        : pendingChangeAction.kind === "revalidate" ? "Revalidation was recorded. Create the new baseline from Activity & baselines."
+        : activeGoal(project) ? `${current.id} created new working versions and returned the active goal to Validate.`
+        : `${current.id} created new working versions. Start a goal to continue the workflow, and review the affected work before revalidation.`;
+      appNotice(message, "success", pendingChangeAction.kind === "accept" ? "Patches approved" : pendingChangeAction.kind === "implement" ? "Change request applied" : "Change revalidated");
+    } else {
+      appNotice("The change or affected work changed during review. No confirmation was recorded; review the current state and try again.", "warning", "Change needs review");
+    }
+    setPendingChangeAction(undefined);
+  }, [pendingChangeAction, project]);
   const impactOptions = [
-    ...project.requirements.map((item) => ({ id: item.id, type: "Requirement" as const })),
-    ...project.stories.map((item) => ({ id: item.id, type: "User story" as const })),
-    ...project.diagrams.map((item) => ({ id: item.id, type: "Diagram" as const })),
-    ...project.documents.map((item) => ({ id: item.id, type: "Document" as const })),
+    ...project.requirements.map((item) => ({ id: item.id, type: "Requirement" as const, name: item.title })),
+    ...project.stories.map((item) => ({ id: item.id, type: "User story" as const, name: item.goal })),
+    ...project.diagrams.map((item) => ({ id: item.id, type: "Diagram" as const, name: item.name })),
+    ...project.documents.map((item) => ({ id: item.id, type: "Document" as const, name: item.name })),
   ];
   const [impactCandidate, setImpactCandidate] = useState(impactOptions[0]?.id ?? "");
+  const selectedImpactOption = impactOptions.find(option => option.id === impactCandidate);
   const impactRuns = (project.aiRuns ?? []).filter(run => run.metadata.task === "impact" && run.status === "accepted");
   const [impactRunId, setImpactRunId] = useState(impactRuns[0]?.id ?? "");
-  const change =
+  const change = missingChange ? undefined :
     project.changes.find((item) => item.id === selectedChange) ??
     project.changes[0];
+  const implementedChange = !!change && ((change.patches ?? []).some(patch => patch.status === "Applied") || change.status === "Implemented" || change.status === "Revalidated");
   const createPatch = (p: Project, artifactId: string, artifactType: "Requirement" | "User story" | "Diagram" | "Document") => {
     const requirement = p.requirements.find(item => item.id === artifactId);
     if (requirement) return { id: uid("CP"), artifactId, artifactType, field: "statement" as const, before: requirement.statement, after: requirement.statement, sourceRevision: requirement.version, selected: true, status: "Proposed" as const };
@@ -2450,13 +2658,17 @@ function ChangesView({
   };
   const apply = () => {
     if (!change) return;
-    let failure: string | undefined;
+    const initialFailure = change.status !== "Approved"
+      ? "Review and accept the selected concrete patches before implementation."
+      : !change.baselineId || !project.versions.some(version => version.id === change.baselineId && version.locked && version.type === "Baseline")
+        ? "Select an existing approved baseline before implementing a change."
+        : validateAcceptedPatches(project, change);
+    if (initialFailure) { appNotice(initialFailure, "warning", "Change not implemented"); return; }
+    const reviewedPatches = JSON.stringify((change.patches ?? []).filter(patch => patch.selected));
+    setPendingChangeAction({ kind: "implement", changeId: change.id, patches: (change.patches ?? []).filter(patch => patch.selected && patch.status === "Accepted").map(({ id, after }) => ({ id, after })) });
     update((p) => {
-      const cr = p.changes.find((c) => c.id === change.id)!;
-      if (cr.status !== "Approved") { failure = "Review and accept the selected concrete patches before implementation."; return; }
-      if (!cr.baselineId || !p.versions.some(version => version.id === cr.baselineId && version.locked && version.type === "Baseline")) { failure = "Select an existing approved baseline before implementing a change."; return; }
-      failure = validateAcceptedPatches(p, cr);
-      if (failure) return;
+      const cr = p.changes.find((c) => c.id === change.id);
+      if (!cr || JSON.stringify((cr.patches ?? []).filter(patch => patch.selected)) !== reviewedPatches || cr.status !== "Approved" || !cr.baselineId || !p.versions.some(version => version.id === cr.baselineId && version.locked && version.type === "Baseline") || validateAcceptedPatches(p, cr)) return;
       applyAcceptedPatches(p, cr);
       cr.status = "Implemented";
       cr.implementedAt = new Date().toISOString();
@@ -2474,12 +2686,6 @@ function ChangesView({
         "Accepted content patches were applied atomically as working revisions; revalidation is required before a new baseline.",
       );
     });
-    if (failure) { appNotice(failure, "warning", "Change not implemented"); return; }
-    appNotice(
-      `${change.id} created new working versions and returned the workflow to Validate.`,
-      "success",
-      "Change request applied",
-    );
   };
   const addImpact = () => {
     if (!change || !impactCandidate) return;
@@ -2523,7 +2729,7 @@ function ChangesView({
                   status: "Proposed",
                   impacts: [],
                   patches: [],
-                  baselineId: p.versions.find(version => version.type === "Baseline")?.id,
+                  baselineId: p.versions.find(version => version.type === "Baseline" && version.locked)?.id,
                   goalId: p.activeGoalId,
                 }),
               );
@@ -2540,15 +2746,21 @@ function ChangesView({
           </Button>
         }
       />
+      {missingChange && <p role="status" className="context-note warning">{missingChange} is no longer available. Choose another change request.</p>}
+      {(project.changes.length > 1 || (missingChange && project.changes.length > 0)) && <div className="change-picker"><label>Change request <select value={change?.id ?? ""} onChange={event => { setMissingChange(undefined); setSelectedChange(event.target.value); setEditing(false); }}>
+        {missingChange && <option value="">Choose a change request…</option>}
+        {project.changes.map(item => <option key={item.id} value={item.id}>{item.title || "Untitled change request"} · {item.status} · {item.id}</option>)}
+      </select></label><small>{project.changes.length} requests in this project</small></div>}
       {change ? (
         <div className="change-layout">
           <Card>
             <header className="change-title">
               <div>
                 <Badge tone="purple">{change.id}</Badge>
-                <StatusBadge value={change.status} />
+                <StatusBadge value={implementedChange && !changeRevalidationIsCurrent(project, change) ? "Revalidation required" : change.status} />
                 {editing ? (
                   <div className="change-edit-fields">
+                    <label>Title
                     <input
                       aria-label="Change request title"
                       value={change.title}
@@ -2559,6 +2771,8 @@ function ChangesView({
                         })
                       }
                     />
+                    </label>
+                    <label>Business reason
                     <textarea
                       aria-label="Change request rationale"
                       value={change.rationale}
@@ -2570,6 +2784,8 @@ function ChangesView({
                         })
                       }
                     />
+                    </label>
+                    <label>Source
                     <input
                       aria-label="Change request source"
                       value={change.source}
@@ -2581,6 +2797,7 @@ function ChangesView({
                         })
                       }
                     />
+                    </label>
                   </div>
                 ) : (
                   <>
@@ -2614,7 +2831,7 @@ function ChangesView({
                   {editing ? <Check size={16} /> : <Pencil size={16} />}
                   {editing ? "Save request" : "Edit request"}
                 </Button>
-                <Button kind="danger" onClick={() => setPendingDelete(change.id)}>
+                <Button kind="danger" disabled={implementedChange} title={implementedChange ? "Implemented changes are retained as history." : undefined} onClick={() => setPendingDelete(change.id)}>
                   <Trash2 size={16} /> Delete
                 </Button>
               </div>
@@ -2633,7 +2850,7 @@ function ChangesView({
             <div className="impact-add-row">
               <label>
                 <span>Approved baseline affected</span>
-                <select value={change.baselineId ?? ""} onChange={(event) => update((p) => {
+                <select disabled={implementedChange} value={change.baselineId ?? ""} onChange={(event) => update((p) => {
                   const cr = p.changes.find(item => item.id === change.id)!;
                   cr.baselineId = event.target.value || undefined;
                   cr.status = "Impact review";
@@ -2660,10 +2877,12 @@ function ChangesView({
             </div>
             <div className="impact-list">
               {change.impacts.map((impact) => (
-                <label key={impact.id}>
+                <div className="impact-item" key={impact.id}>
+                  <label className="impact-selection">
                   <input
                     type="checkbox"
                     checked={impact.selected}
+                    disabled={implementedChange}
                     onChange={(e) =>
                       update((p) => {
                         const cr = p.changes.find((c) => c.id === change.id)!;
@@ -2686,21 +2905,32 @@ function ChangesView({
                   </i>
                   <span>
                     <b>
-                      {impact.id} · {impact.type}
+                      {impactOptions.find(option => option.id === impact.id)?.name || impact.id} · {impact.type} · {impact.id}
                     </b>
                     <small>{impact.reason}</small>
                   </span>
-                  <StatusBadge
-                    value={impact.selected ? "Will update" : "Review only"}
-                  />
+                  </label>
+                  <StatusBadge value={impact.selected ? "Will update" : "Review only"} />
+                  <div className="impact-actions">
                   {!(change.patches ?? []).some(patch => patch.artifactId === impact.id) && (
-                    <Button onClick={() => update((p) => {
+                    <Button disabled={implementedChange} onClick={() => update((p) => {
                       const cr = p.changes.find(item => item.id === change.id)!;
                       const patch = createPatch(p, impact.id, impact.type as "Requirement" | "User story" | "Diagram" | "Document");
                       if (patch) (cr.patches ??= []).push(patch);
                     })}>Draft content patch</Button>
                   )}
-                </label>
+                  {impact.type === "Requirement" && !(change.patches ?? []).some(patch => patch.artifactId === impact.id && patch.field === "criteria") && (
+                    <Button disabled={implementedChange} onClick={() => update(p => {
+                      const cr = p.changes.find(item => item.id === change.id);
+                      const requirement = p.requirements.find(item => item.id === impact.id);
+                      if (!cr || !requirement || cr.patches?.some(patch => patch.artifactId === impact.id && patch.field === "criteria") || cr.patches?.some(patch => patch.status === "Applied")) return;
+                      const before = requirement.fitCriteria.join("\n");
+                      (cr.patches ??= []).push({ id: uid("CP"), artifactId: requirement.id, artifactType: "Requirement", field: "criteria", before, after: before, sourceRevision: requirement.version, selected: impact.selected, status: "Proposed" });
+                      cr.status = "Impact review";
+                    })}>Draft acceptance criteria patch</Button>
+                  )}
+                  </div>
+                </div>
               ))}
             </div>
             <div className="impact-add-row">
@@ -2712,15 +2942,16 @@ function ChangesView({
                 >
                   {impactOptions.map((option) => (
                     <option key={option.id} value={option.id}>
-                      {option.id} · {option.type}
+                      {option.name || "Untitled"} · {option.type} · {option.id}
                     </option>
                   ))}
                 </select>
+                {selectedImpactOption && <small className="selected-impact-name">{selectedImpactOption.name} · {selectedImpactOption.type}</small>}
               </label>
               <Button
                 onClick={addImpact}
                 disabled={
-                  !impactCandidate ||
+                  implementedChange || !impactCandidate ||
                   change.impacts.some((item) => item.id === impactCandidate)
                 }
               >
@@ -2741,49 +2972,64 @@ function ChangesView({
               <Button
                 kind="primary"
                 onClick={() => {
-                  let failure: string | undefined;
+                  const proposed = { ...change, patches: (change.patches ?? []).map(patch => patch.selected ? { ...patch, status: "Accepted" as const } : patch) };
+                  const validation = validateAcceptedPatches(project, proposed);
+                  if (validation) { appNotice(validation, "warning", "Patches need review"); return; }
+                  const reviewedPatches = JSON.stringify((change.patches ?? []).filter(patch => patch.selected));
+                  setPendingChangeAction({ kind: "accept", changeId: change.id, patches: (change.patches ?? []).filter(patch => patch.selected).map(({ id, after }) => ({ id, after })) });
                   update((p) => {
-                    const cr = p.changes.find(item => item.id === change.id)!;
+                    const cr = p.changes.find(item => item.id === change.id);
+                    if (!cr || JSON.stringify((cr.patches ?? []).filter(patch => patch.selected)) !== reviewedPatches || (cr.patches ?? []).some(patch => patch.status === "Applied")) return;
                     const patches = (cr.patches ?? []).filter(patch => patch.selected);
-                    if (!patches.length) { failure = "Create and select at least one concrete content patch."; return; }
-                    const stale = patches.find(patch => !patchIsCurrent(p, patch));
-                    if (stale) { failure = `${stale.id} is stale. Refresh its before value before accepting it.`; return; }
-                    const unchanged = patches.find(patch => !patch.after.trim() || patch.after === patch.before);
-                    if (unchanged) { failure = `${unchanged?.id} has no substantive proposed change.`; return; }
+                    if (validateAcceptedPatches(p, { ...cr, patches: (cr.patches ?? []).map(patch => patch.selected ? { ...patch, status: "Accepted" as const } : patch) })) return;
                     patches.forEach(patch => { patch.status = "Accepted"; });
                     cr.status = "Approved";
                     cr.approvedAt = new Date().toISOString();
                     addAudit(p, "Approved change patches", cr.id, `${patches.length} concrete content patches were accepted for atomic implementation.`);
                   });
-                  if (failure) appNotice(failure, "warning", "Patches need review");
-                  else appNotice(`${change.id} is approved for implementation.`, "success", "Patches approved");
                 }}
-                disabled={change.status === "Implemented" || change.status === "Revalidated" || !(change.patches ?? []).some(patch => patch.selected)}
+                disabled={implementedChange || !(change.patches ?? []).some(patch => patch.selected)}
               >
                 Accept selected patches <Check size={16} />
               </Button>
-              <Button kind="primary" onClick={apply} disabled={change.status !== "Approved"}>
+              <Button kind="primary" onClick={apply} disabled={implementedChange || change.status !== "Approved"}>
                 Implement accepted patches <ArrowRight size={16} />
               </Button>
-              {change.status === "Implemented" && <Button onClick={() => {
-                if (!approvalAllowed(project)) { appNotice("Complete the required reviews and approvals before recording revalidation.", "warning", "Revalidation blocked"); return; }
+              {implementedChange && !changeRevalidationIsCurrent(project, change) && <Button onClick={() => {
+                const issues = changeRevalidationIssues(project, change);
+                if (issues.length) { appNotice(issues.join(" "), "warning", "Revalidation blocked"); return; }
+                const reviewedChange = JSON.stringify(change);
+                const reviewedRevisions = JSON.stringify(changeAffectedIds(project, change).map(id => [id, revisionOf(project, id)]));
                 update((p) => {
-                  const cr = p.changes.find(item => item.id === change.id)!;
+                  const cr = p.changes.find(item => item.id === change.id);
+                  if (!cr || JSON.stringify(cr) !== reviewedChange || JSON.stringify(changeAffectedIds(p, cr).map(id => [id, revisionOf(p, id)])) !== reviewedRevisions || changeRevalidationIssues(p, cr).length) return;
+                  cr.revalidationRevisions = Object.fromEntries(changeAffectedIds(p, cr).map(id => [id, revisionOf(p, id)]));
                   cr.status = "Revalidated";
                   cr.revalidatedAt = new Date().toISOString();
                   addAudit(p, "Recorded change revalidation", cr.id, "The implemented working revisions passed the current approval policy and are ready for a new baseline.");
                 });
-                appNotice("Revalidation was recorded. Create the new baseline from Activity & baselines.", "success", "Change revalidated");
+                setPendingChangeAction({ kind: "revalidate", changeId: change.id, patches: (change.patches ?? []).filter(patch => patch.selected && patch.status === "Applied").map(({ id, after }) => ({ id, after })) });
               }}>Record revalidation</Button>}
             </footer>
           </Card>
           <Card title="Reviewed content patches" description="Each patch is bound to its current source revision. Edit the proposed value; nothing is implemented from an example or version number alone.">
             {(change.patches ?? []).map((patch) => (
               <div className="side-diff" key={patch.id}>
-                <label><input type="checkbox" checked={patch.selected} disabled={patch.status === "Applied"} onChange={(event) => update((p) => { const item = p.changes.find(item => item.id === change.id)!.patches!.find(item => item.id === patch.id)!; item.selected = event.target.checked; if (item.status !== "Applied") item.status = "Proposed"; p.changes.find(item => item.id === change.id)!.status = "Impact review"; })} /> {patch.artifactId} · {patch.field} · source v{patch.sourceRevision}</label>
+                <label><input type="checkbox" checked={patch.selected} disabled={implementedChange} onChange={(event) => update((p) => { const item = p.changes.find(item => item.id === change.id)!.patches!.find(item => item.id === patch.id)!; item.selected = event.target.checked; if (item.status !== "Applied") item.status = "Proposed"; p.changes.find(item => item.id === change.id)!.status = "Impact review"; })} /> {patch.artifactId} · {patch.field} · source v{patch.sourceRevision}</label>
+                {patch.artifactType === "Document" && <label className="change-block-target"><span>Document block to replace</span><select aria-label={`Target block for ${patch.id}`} disabled={implementedChange} value={patch.targetId ?? ""} onChange={event => {
+                  const targetId = event.target.value;
+                  update(p => {
+                    const cr = p.changes.find(item => item.id === change.id);
+                    const current = cr?.patches?.find(item => item.id === patch.id);
+                    const doc = p.documents.find(item => item.id === patch.artifactId);
+                    const block = doc?.sections.flatMap(section => section.blocks).find(item => item.id === targetId);
+                    if (!cr || !current || !doc || !block || current.status === "Applied") return;
+                    current.targetId = block.id; current.before = block.content; current.after = block.content; current.sourceRevision = doc.version; current.status = "Proposed"; cr.status = "Impact review";
+                  });
+                }}>{project.documents.find(item => item.id === patch.artifactId)?.sections.flatMap(section => section.blocks.map(block => <option key={block.id} value={block.id}>{section.title} · {block.syncArtifactId ?? block.type} · {block.content.slice(0, 100)}</option>))}</select><small>Changing the target resets the replacement to that block’s current content.</small></label>}
                 <div><span>Current</span><pre>{patch.before}</pre></div>
                 <ArrowRight />
-                <label><span>Proposed replacement</span><textarea aria-label={`Proposed patch ${patch.id}`} value={patch.after} disabled={patch.status === "Applied"} onChange={(event) => update((p) => { const item = p.changes.find(item => item.id === change.id)!.patches!.find(item => item.id === patch.id)!; item.after = event.target.value; item.status = "Proposed"; p.changes.find(item => item.id === change.id)!.status = "Impact review"; })} /><Button disabled={patch.status === "Applied"} onClick={() => update((p) => { const cr = p.changes.find(item => item.id === change.id)!; const item = cr.patches!.find(item => item.id === patch.id)!; item.status = "Rejected"; item.selected = false; cr.status = "Impact review"; addAudit(p, "Rejected change patch", `${change.id}/${patch.id}`, "The proposed content patch was retained as rejected and was not implemented."); })}>Reject patch</Button></label>
+                <label><span>Proposed replacement</span><textarea aria-label={`Proposed patch ${patch.id}`} value={patch.after} disabled={implementedChange} onChange={(event) => update((p) => { const item = p.changes.find(item => item.id === change.id)!.patches!.find(item => item.id === patch.id)!; item.after = event.target.value; item.status = "Proposed"; p.changes.find(item => item.id === change.id)!.status = "Impact review"; })} /><Button disabled={implementedChange} onClick={() => update((p) => { const cr = p.changes.find(item => item.id === change.id)!; const item = cr.patches!.find(item => item.id === patch.id)!; item.status = "Rejected"; item.selected = false; cr.status = "Impact review"; addAudit(p, "Rejected change patch", `${change.id}/${patch.id}`, "The proposed content patch was retained as rejected and was not implemented."); })}>Reject patch</Button></label>
               </div>
             ))}
             {(change.patches ?? []).length === 0 && <EmptyState icon={<FileText />} title="No content patches yet" description="Add an affected artifact, then define the actual replacement content before approval." />}
@@ -2799,7 +3045,7 @@ function ChangesView({
             </div>
           </Card>
         </div>
-      ) : (
+      ) : missingChange ? null : (
         <EmptyState
           icon={<RefreshCw />}
           title="No change requests"
@@ -2827,41 +3073,47 @@ function ChangesView({
   );
 }
 
-function GovernanceView({
+export function GovernanceView({
   project,
   update,
 }: {
   project: Project;
   update: (fn: (p: Project) => void) => void;
 }) {
+  const location = useLocation();
+  const referenceId = new URLSearchParams(location.search).get("artifact");
+  const referenceExists = !referenceId || project.checks.some(check => check.id === referenceId);
+  useEffect(() => {
+    if (!referenceId || !referenceExists) return;
+    const target = document.getElementById(`governance-${referenceId}`);
+    target?.scrollIntoView({ block: "start" });
+    target?.focus({ preventScroll: true });
+  }, [referenceId, referenceExists, project.id]);
   const [configuring, setConfiguring] = useState(false);
   const [ruleTitle, setRuleTitle] = useState("");
   const [ruleOwner, setRuleOwner] = useState("Business analyst");
   const [pendingDelete, setPendingDelete] = useState<string>();
-  const resolve = (id: string) => {
-    update((p) => {
-      const check = p.checks.find((c) => c.id === id)!;
-      check.status = "Passed";
-      check.resolution =
-        "Confirmed with the responsible policy owner and linked to decision DEC-02.";
-      addAudit(p, "Resolved governance check", id, check.resolution);
-    });
-    appNotice(
-      `${id} was resolved with an auditable rationale.`,
-      "success",
-      "Governance check resolved",
-    );
+  const [disposition, setDisposition] = useState<{ id: string; status: "Passed" | "Not applicable" }>();
+  const [dispositionDrafts, setDispositionDrafts] = useState<Record<string, string>>({});
+  const dispositionKey = disposition ? `${disposition.id}:${disposition.status}` : "";
+  const dispositionRationale = dispositionDrafts[dispositionKey] ?? "";
+  const closeDisposition = () => {
+    setDispositionDrafts(current => { const next = { ...current }; delete next[dispositionKey]; return next; });
+    setDisposition(undefined);
+  };
+  const beginDisposition = (id: string, status: "Passed" | "Not applicable") => {
+    setDisposition({ id, status });
   };
   return (
     <>
       <PageHeader
         eyebrow="Layered policy engine"
-        title="Governance & checks"
+        title="Checks & safeguards"
         description="Core safeguards cannot be disabled; domain and project rules add contextual evidence."
         actions={
-          <Button onClick={() => setConfiguring(!configuring)}>
-            <Settings size={17} /> Configure project rules
-          </Button>
+          <button type="button" className="button secondary" aria-expanded={configuring} onClick={() => setConfiguring(!configuring)}>
+            <Settings size={17} /> {configuring ? "Close rule editor" : "Configure project rules"}
+          </button>
         }
       />
       {configuring && (
@@ -2951,31 +3203,12 @@ function GovernanceView({
           tone="danger"
         />
       </div>
-      <Card
-        title="Active governance layers"
-        description="Project rules may strengthen, but never weaken, core safeguards."
-      >
-        <div className="pack-list">
-          {project.governancePacks.map((pack, index) => (
-            <div key={pack}>
-              <i>{index === 0 ? <LockKeyhole /> : <ShieldCheck />}</i>
-              <span>
-                <b>{pack}</b>
-                <small>
-                  {index === 0
-                    ? "Immutable · Human approval, privacy, uncertainty and traceability"
-                    : "Domain or organization policy pack"}
-                </small>
-              </span>
-              <StatusBadge value={index === 0 ? "Locked" : "Active"} />
-            </div>
-          ))}
-        </div>
-      </Card>
+      {referenceId && !referenceExists && <p role="status" className="context-note warning">{referenceId} is no longer available. Review the current findings below.</p>}
+      <h2 className="governance-findings-title">Review findings</h2>
+      {!project.checks.length && <p className="context-note">No review findings have been recorded yet.</p>}
       <div className="check-grid">
         {project.checks.map((check) => (
-          <Card
-            key={check.id}
+          <div key={check.id} id={`governance-${check.id}`} tabIndex={-1}><Card
             className={`governance-check ${check.status.toLowerCase().replace(" ", "-")}`}
           >
             <header>
@@ -3019,31 +3252,13 @@ function GovernanceView({
               ) : (
                 <button
                   disabled={!governanceCanDisable(check)}
-                  onClick={() => {
-                    update((p) => {
-                      const item = p.checks.find((c) => c.id === check.id)!;
-                      item.status = "Not applicable";
-                      item.resolution =
-                        "Project owner recorded a scoped not-applicable rationale.";
-                      addAudit(
-                        p,
-                        "Marked check not applicable",
-                        item.id,
-                        item.resolution,
-                      );
-                    });
-                    appNotice(
-                      `${check.id} was marked not applicable with a recorded rationale.`,
-                      "success",
-                      "Governance status updated",
-                    );
-                  }}
+                  onClick={() => beginDisposition(check.id, "Not applicable")}
                 >
                   Mark not applicable
                 </button>
               )}
               {check.status !== "Passed" && (
-                <Button kind="primary" onClick={() => resolve(check.id)}>
+                <Button kind="primary" onClick={() => beginDisposition(check.id, "Passed")}>
                   Record resolution
                 </Button>
               )}
@@ -3053,9 +3268,53 @@ function GovernanceView({
                 </Button>
               )}
             </footer>
-          </Card>
+            {disposition?.id === check.id && (
+              <div className="context-note governance-disposition">
+                <div>
+                  <label>
+                    <span>{disposition.status === "Passed" ? "How was this resolved?" : "Why does this not apply?"}</span>
+                    <textarea
+                      aria-label={`Rationale for ${check.id}`}
+                      value={dispositionRationale}
+                      onChange={(event) => { const value = event.target.value; setDispositionDrafts(current => ({ ...current, [dispositionKey]: value })); }}
+                      placeholder="Describe the actual decision and supporting evidence or owner, if known."
+                    />
+                  </label>
+                  <p>Draft notes stay while this page is open. Saving records the rationale in project activity. Refer to a decision only if it exists.</p>
+                  <div className="governance-disposition-actions"><Button kind="primary" disabled={!dispositionRationale.trim()} onClick={() => {
+                    const rationale = dispositionRationale.trim();
+                    update((p) => recordGovernanceDisposition(p, check.id, disposition.status, rationale));
+                    closeDisposition();
+                    appNotice(`${check.id} was recorded as ${disposition.status}.`, "success", "Governance status updated");
+                  }}>Save rationale</Button>
+                  <Button onClick={closeDisposition}>Cancel</Button></div>
+                </div>
+              </div>
+            )}
+          </Card></div>
         ))}
       </div>
+      <Card
+        title="Active governance layers"
+        description="Project rules may strengthen, but never weaken, core safeguards."
+      >
+        <div className="pack-list">
+          {project.governancePacks.map((pack, index) => (
+            <div key={pack}>
+              <i>{index === 0 ? <LockKeyhole /> : <ShieldCheck />}</i>
+              <span>
+                <b>{pack}</b>
+                <small>
+                  {index === 0
+                    ? "Immutable · Human approval, privacy, uncertainty and traceability"
+                    : "Domain or organization policy pack"}
+                </small>
+              </span>
+              <StatusBadge value={index === 0 ? "Locked" : "Active"} />
+            </div>
+          ))}
+        </div>
+      </Card>
       {pendingDelete && (
         <ConfirmDialog
           title={`Delete ${pendingDelete}?`}
@@ -3076,13 +3335,31 @@ function GovernanceView({
   );
 }
 
-function ActivityView({
+export function ActivityView({
   project,
   update,
 }: {
   project: Project;
   update: (fn: (p: Project) => void) => void;
 }) {
+  const navigate = useNavigate();
+  const [approving, setApproving] = useState(false);
+  const [approvalDialog, setApprovalDialog] = useState(false);
+  const [approvalName, setApprovalName] = useState("");
+  const [approvalConfirmed, setApprovalConfirmed] = useState(false);
+  const [approvalScope, setApprovalScope] = useState("");
+  const [approvalError, setApprovalError] = useState("");
+  const approvalDialogRef = useRef<HTMLDivElement>(null);
+  useDialogAccessibility(approvalDialogRef, () => { if (!approvalInProgress.current) setApprovalDialog(false); }, approvalDialog);
+  const approvalInProgress = useRef(false);
+  const approvalAttempt = useRef(0);
+  const manifest = baselineManifestWithChanges(project);
+  const dependencyIssues = baselineDependencyIssues(project);
+  const policyIssues = baselineIssues(project);
+  const pendingChanges = changesNeedingRevalidation(project);
+  const openQuestions = project.clarifications.filter(item => item.status === "Unanswered" || item.status === "Deferred");
+  const openChecks = project.checks.filter(item => item.status === "Warning" || item.status === "Blocking");
+  const openReview = (route: string, id?: string) => navigate(`/projects/${project.id}/${route}${id ? `?artifact=${encodeURIComponent(id)}` : ""}`);
   const snapshot = () => {
     update((p) => {
       p.versions.unshift({
@@ -3109,22 +3386,57 @@ function ActivityView({
       "Snapshot created",
     );
   };
-  const approveBaseline = () => {
+  const approveBaseline = async () => {
+    if (approvalInProgress.current || !approvalName.trim() || !approvalConfirmed) return;
+    if (JSON.stringify(project) !== approvalScope) { const message = "The project changed since this approval was opened. Close and review the latest scope before approving."; setApprovalError(message); notify(message, "warning", "Baseline scope changed"); return; }
     if (activeGoal(project)?.gate !== "Approve") {
       notify("Complete the Validate stage before creating an approved baseline.", "warning", "Baseline is not ready");
       return;
     }
+    if (changesNeedingRevalidation(project).length) { notify("Review and revalidate implemented changes before creating a baseline.", "warning", "Baseline is not ready"); return; }
     if (!approvalAllowed(project)) { notify(baselineIssues(project).join(" "), "warning"); return; }
+    if (baselineDependencyIssues(project).length) { notify(baselineDependencyIssues(project).join(" "), "warning", "Baseline is not ready"); return; }
+    approvalInProgress.current = true;
+    setApprovalError("");
+    setApproving(true);
+    const attempt = ++approvalAttempt.current;
+    const checkedState = JSON.stringify(project);
+    const checkedGoal = activeGoal(project);
+    try {
+      if (!checkedGoal) throw new Error("Choose an active goal before approving a baseline.");
+      await verifyBaselineSources(project, checkedGoal.id);
+    } catch (error) {
+      approvalInProgress.current = false;
+      setApproving(false);
+      const message = error instanceof Error ? error.message : "The selected sources could not be checked.";
+      setApprovalError(message);
+      appNotice(message, "warning", "Baseline is not ready");
+      return;
+    }
     update((p) => {
+      const finish = (message: string, success: boolean) => queueMicrotask(() => {
+        if (approvalAttempt.current !== attempt) return;
+        approvalAttempt.current += 1;
+        approvalInProgress.current = false;
+        setApproving(false);
+        if (success) setApprovalDialog(false); else setApprovalError(message);
+        appNotice(message, success ? "success" : "warning", success ? "Baseline approved" : "Baseline is not ready");
+      });
+      if (JSON.stringify(p) !== checkedState || !canCreateBaseline(p)) {
+        finish("The project changed while its sources were checked. Review the current baseline scope and try again.", false);
+        return;
+      }
+      const manifest = baselineManifestWithChanges(p);
+      const included = new Set(manifest.map(item => item.id));
       p.requirements.forEach((r) => {
-        if (r.status === "in-review" && (!p.activeGoalId || !r.goalId || r.goalId === p.activeGoalId)) r.status = "approved";
+        if (r.status === "in-review" && included.has(r.id)) r.status = "approved";
       });
       p.documents.forEach((d) => {
-        if (d.status === "in-review" && (!p.activeGoalId || !d.goalId || d.goalId === p.activeGoalId)) d.status = "approved";
+        if (d.status === "in-review" && included.has(d.id)) d.status = "approved";
       });
-      p.stories.forEach((story) => { if (story.status === "in-review" && (!p.activeGoalId || !story.goalId || story.goalId === p.activeGoalId)) story.status = "approved"; });
+      p.stories.forEach((story) => { if (story.status === "in-review" && included.has(story.id)) story.status = "approved"; });
       p.diagrams.forEach((diagram) => {
-        if (diagram.status === "In review" && (!p.activeGoalId || !diagram.goalId || diagram.goalId === p.activeGoalId)) {
+        if (["In review", "Current"].includes(diagram.status) && diagram.approvalStatus !== "Approved" && included.has(diagram.id)) {
           diagram.status = "Approved";
           diagram.approvalStatus = "Approved";
         }
@@ -3135,24 +3447,21 @@ function ActivityView({
         snapshot: captureSnapshot(p),
         version: `B${p.versions.filter((v) => v.type === "Baseline").length + 1}`,
         at: new Date().toISOString(),
-        actor: "Business analyst",
+        actor: approvalName.trim(),
         type: "Baseline",
         locked: true,
         changes: "Human-approved artifact, governance and traceability package",
-        manifest: revisionManifest(p),
+        manifest,
       });
       addAudit(
         p,
         "Approved baseline",
         "Current project package",
-        "Named BA authority recorded; baseline locked against direct edits.",
+        `Self-attested approval recorded; baseline locked against direct edits. Included revisions: ${manifest.map(item => `${item.id} v${item.revision}`).join(", ")}.`,
+        approvalName.trim(),
       );
+      finish("The reviewed artifact package was locked as a new human-approved baseline.", true);
     });
-    appNotice(
-      "The reviewed artifact package was locked as a new human-approved baseline.",
-      "success",
-      "Baseline approved",
-    );
   };
   return (
     <>
@@ -3167,15 +3476,29 @@ function ActivityView({
             </Button>
             <Button
               kind="primary"
-              onClick={approveBaseline}
-              disabled={!canCreateBaseline(project)}
-              title={activeGoal(project)?.gate !== "Approve" ? "Complete the Validate stage first." : baselineIssues(project).join(" ")}
+              onClick={() => { setApprovalName(""); setApprovalConfirmed(false); setApprovalError(""); setApprovalScope(JSON.stringify(project)); setApprovalDialog(true); }}
+              disabled={approving || !canCreateBaseline(project)}
+              title={activeGoal(project)?.gate !== "Approve" ? "Complete the Validate stage first." : changesNeedingRevalidation(project).length ? "Review and revalidate implemented changes first." : [...baselineIssues(project), ...baselineDependencyIssues(project)].join(" ")}
             >
-              <LockKeyhole size={17} /> Approve new baseline
+              <LockKeyhole size={17} /> {approving ? "Checking sources…" : "Approve new baseline"}
             </Button>
           </>
         }
       />
+      {approvalDialog && <div className="modal-backdrop" role="presentation"><div ref={approvalDialogRef} className="modal" role="dialog" aria-modal="true" aria-label="Confirm baseline approval"><header><div><span className="eyebrow">Record local approval</span><h2>Approve this baseline?</h2></div><IconButton label="Close baseline approval" disabled={approving} onClick={() => setApprovalDialog(false)}><X /></IconButton></header><div className="modal-body"><p>Confirm the listed artifact revisions and the unresolved items have been reviewed. BA Mate records the name or role you enter; it does not authenticate the approver.</p><details><summary>Revisions in this baseline ({manifest.length})</summary><ul>{manifest.map(item => <li key={item.id}>{item.type} {item.id} · v{item.revision}</li>)}</ul></details><details><summary>Open questions and checks across this project ({openQuestions.length + openChecks.length})</summary>{openQuestions.length + openChecks.length ? <ul>{openQuestions.map(item => <li key={item.id}>Question {item.id} · {item.status}: {item.question}</li>)}{openChecks.map(item => <li key={item.id}>Check {item.id} · {item.status}: {item.title}</li>)}</ul> : <p>No unanswered or deferred questions or open warning or blocking checks are recorded.</p>}<p>Some items may belong to another goal. Check their scope before approval.</p></details><label className="editor-field"><span>Approver name or role</span><input value={approvalName} disabled={approving} onChange={event => setApprovalName(event.target.value)} maxLength={160} /></label><label className="setup-remote-choice"><input type="checkbox" checked={approvalConfirmed} disabled={approving} onChange={event => setApprovalConfirmed(event.target.checked)} /> I reviewed the baseline scope and am authorized to record this approval.</label>{approvalError && <p className="context-note warning" role="alert">{approvalError}</p>}</div><footer><Button disabled={approving} onClick={() => setApprovalDialog(false)}>Cancel</Button><Button kind="primary" disabled={approving || !approvalName.trim() || !approvalConfirmed} onClick={() => void approveBaseline()}>{approving ? "Checking sources…" : "Record approval"}</Button></footer></div></div>}
+      <div className="baseline-review-summary">
+        <h2>Next baseline</h2>
+        <p>Includes artifacts from the active goal, its revalidated changes and their linked artifacts. Review each item before approval.</p>
+        {activeGoal(project)?.gate !== "Approve" && <p>Complete the Validate stage before approving a baseline. <button type="button" onClick={() => openReview("workflow")}>Open guided workflow</button></p>}
+        {pendingChanges.length > 0 && <p>{pendingChanges.length} implemented {pendingChanges.length === 1 ? "change needs" : "changes need"} revalidation. <button type="button" onClick={() => openReview("changes")}>Open changes</button></p>}
+        {policyIssues.length > 0 && <details><summary>Goal approval checks ({policyIssues.length})</summary><ul>{policyIssues.map(issue => <li key={issue}>{issue}</li>)}</ul><button type="button" onClick={() => openReview("governance")}>Open checks and safeguards</button> <button type="button" onClick={() => openReview("traceability")}>Open evidence links</button></details>}
+        {manifest.length ? <details className="baseline-scope"><summary>Review baseline artifacts ({manifest.length})</summary><ul className="baseline-artifact-list">{manifest.map(item => {
+          const issues = dependencyIssues.filter(issue => issue.startsWith(`${item.id}: `)).map(issue => issue.slice(item.id.length + 2));
+          const route = item.type === "Diagram" ? "diagrams" : item.type === "Document" ? "documents" : "artifacts";
+          const name = project.requirements.find(entry => entry.id === item.id)?.title ?? project.stories.find(entry => entry.id === item.id)?.goal ?? project.diagrams.find(entry => entry.id === item.id)?.name ?? project.documents.find(entry => entry.id === item.id)?.name ?? item.id;
+          return <li key={item.id}><div><b>{name}</b> · {item.id} · {item.type} · v{item.revision} {issues.length ? <span>· Review needed</span> : <span>· Ready for baseline review</span>}</div>{issues.length > 0 && <details><summary>{issues.length} review {issues.length === 1 ? "item" : "items"}</summary><ul>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}<button type="button" aria-label={`Open ${item.type} workspace to review ${item.id}`} onClick={() => openReview(route, item.id)}>Open {item.type === "Diagram" ? "diagrams" : item.type === "Document" ? "documents" : "requirements and stories"}</button>{issues.some(issue => /trace|evidence/i.test(issue)) && <> · <button type="button" aria-label={`Open evidence links to review ${item.id}`} onClick={() => openReview("traceability", item.id)}>Open evidence links</button></>}</li>;
+        })}</ul></details> : <p>No artifacts are in scope yet.</p>}
+      </div>
       <div className="version-layout">
         <Card
           title="Versions and baselines"
@@ -3224,7 +3547,7 @@ function ActivityView({
           title="Audit trail"
           description="Suggestions, edits, approvals and exports"
         >
-          <div className="audit-list">
+          <div className="audit-list" role="region" aria-label="Audit trail entries" tabIndex={0}>
             {project.audit.map((event) => (
               <div key={event.id}>
                 <i>
@@ -3248,20 +3571,42 @@ function ActivityView({
   );
 }
 
-function TeamView({
+type ProjectSettingsDraft = { name: string; domain: string; description: string; policies: string[] };
+const projectSettingsDrafts = new Map<string, ProjectSettingsDraft>();
+const coreProjectPolicies = ['Core responsible BA', 'Human oversight & traceability'];
+
+export function PolicyProposalReview({ current, proposed, onUse, onDiscard }: { current: string[]; proposed: string[]; onUse: (policies: string[]) => void; onDiscard: () => void }) {
+  const reviewed = [...new Set([...coreProjectPolicies, ...proposed.map(item => item.trim()).filter(Boolean)])];
+  const added = reviewed.filter(item => !current.includes(item));
+  const removed = current.filter(item => !reviewed.includes(item));
+  return <div className="setup-policy-proposal"><b>Review suggested policy changes</b><p>Compare this proposal with the list above. Applying it changes the editable list; save separately when ready. Core policies remain locked.</p>
+    <div className="policy-proposal-changes"><section><strong>Added ({added.length})</strong>{added.length ? <ul>{added.map(policy => <li key={policy}>{policy}</li>)}</ul> : <p>None</p>}</section><section><strong>Removed ({removed.length})</strong>{removed.length ? <ul>{removed.map(policy => <li key={policy}>{policy}</li>)}</ul> : <p>None</p>}</section></div>
+    <details><summary>View proposed list ({reviewed.length})</summary><ul>{reviewed.map(policy => <li key={policy}>{policy}</li>)}</ul></details>
+    <div className="policy-proposal-actions"><Button onClick={() => onUse(reviewed)}>Use this list for review</Button><Button onClick={onDiscard}>Discard proposal</Button></div>
+  </div>;
+}
+
+export function TeamView({
   project,
   update,
 }: {
   project: Project;
   update: (fn: (p: Project) => void) => void;
 }) {
-  const [connectingFolder, setConnectingFolder] = useState(false);
+  const { connect: reconnectFolder, connecting: connectingFolder } = useFolderConnection(project, update);
   const navigate = useNavigate();
   const [pendingRemove, setPendingRemove] = useState<string>();
-  const [projectName, setProjectName] = useState(project.name);
-  const [projectDomain, setProjectDomain] = useState(project.domain);
-  const [projectDescription, setProjectDescription] = useState(project.description);
-  const [policyDraft, setPolicyDraft] = useState(project.governancePacks);
+  const cachedDraft = projectSettingsDrafts.get(project.id);
+  const [projectName, setProjectName] = useState(cachedDraft?.name ?? project.name);
+  const [projectDomain, setProjectDomain] = useState(cachedDraft?.domain ?? project.domain);
+  const [projectDescription, setProjectDescription] = useState(cachedDraft?.description ?? project.description);
+  const [policyDraft, setPolicyDraft] = useState(cachedDraft?.policies ?? project.governancePacks);
+  const setupChanged = projectName !== project.name || projectDomain !== project.domain || projectDescription !== project.description;
+  const policiesChanged = JSON.stringify(policyDraft) !== JSON.stringify(project.governancePacks);
+  useEffect(() => {
+    if (setupChanged || policiesChanged) projectSettingsDrafts.set(project.id, { name: projectName, domain: projectDomain, description: projectDescription, policies: policyDraft });
+    else projectSettingsDrafts.delete(project.id);
+  }, [project.id, projectName, projectDomain, projectDescription, policyDraft, setupChanged, policiesChanged]);
   const [policyInstruction, setPolicyInstruction] = useState("");
   const [policyProposal, setPolicyProposal] = useState<string[] | null>(null);
   const [policyBusy, setPolicyBusy] = useState(false);
@@ -3278,37 +3623,12 @@ function TeamView({
     } catch (error) { setPolicyError(error instanceof Error ? error.message : "BA Mate could not prepare a policy proposal."); }
     finally { setPolicyBusy(false); }
   };
-  const reconnectFolder = async () => {
-    setConnectingFolder(true);
-    try {
-      const candidate = await chooseProjectFolder();
-      if (!candidate) return;
-      const copy = await copyProjectToWorkspace(project, candidate);
-      update(p => {
-        p.folderName = copy.folderName;
-        p.workspaceId = copy.workspaceId;
-        p.workspaceKind = copy.workspaceKind;
-        p.workspacePath = copy.workspacePath;
-        p.workspaceFolders = copy.workspaceFolders;
-        for (const source of p.sources) {
-          const moved = copy.sources.find(item => item.id === source.id);
-          if (moved) { source.relativePath = moved.relativePath; source.originalBase64 = moved.originalBase64; source.approved = moved.approved; source.status = moved.status; }
-        }
-        addAudit(p, "Reconnected project folder", copy.folderName, `${copy.sources.length} original source${copy.sources.length === 1 ? " was" : "s were"} copied into the project folder.`);
-      });
-      appNotice(`${copy.folderName} now contains the project's original sources.`, "success", "Project folder connected");
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) appNotice(error instanceof Error ? error.message : "The folder could not be connected.", "danger", "Folder connection failed");
-    } finally {
-      setConnectingFolder(false);
-    }
-  };
   return (
     <>
       <PageHeader
         eyebrow="Local collaboration model"
-        title="Team & project settings"
-        description="Manage the local approval roles used for this beta workspace. No invitations are sent."
+        title="Project settings"
+        description="Manage project details, policies, local roles and the workspace folder. No invitations are sent."
       />
       <div className="team-layout">
         <Card title="Project setup" description="Update the project's working context. BA Mate uses the current description when proposing work.">
@@ -3316,20 +3636,25 @@ function TeamView({
             <label className="editor-field"><span>Project name</span><input value={projectName} onChange={event => setProjectName(event.target.value)} /></label>
             <label className="editor-field"><span>Category or domain</span><input value={projectDomain} onChange={event => setProjectDomain(event.target.value)} /></label>
             <label className="editor-field"><span>Project description</span><textarea value={projectDescription} onChange={event => setProjectDescription(event.target.value)} /></label>
-            <Button kind="primary" disabled={!projectName.trim() || !projectDomain.trim()} onClick={() => { update(p => { p.name = projectName.trim(); p.domain = projectDomain.trim(); p.description = projectDescription.trim(); addAudit(p, "Updated project setup", "Project brief", `${p.domain}: ${p.description}`); }); appNotice("Project context updated. Review any affected suggestions or artifacts.", "success"); }}><Save size={16} /> Save project setup</Button>
+            {setupChanged && <p className="context-note" role="status">Project setup changes are not saved. They remain available while you move between pages in this session.</p>}
+            <Button kind="primary" disabled={!projectName.trim() || !projectDomain.trim()} onClick={() => { const name = projectName.trim(), domain = projectDomain.trim(), description = projectDescription.trim(); setProjectName(name); setProjectDomain(domain); setProjectDescription(description); update(p => { p.name = name; p.domain = domain; p.description = description; addAudit(p, "Updated project setup", "Project brief", `${p.domain}: ${p.description}`); }); appNotice("Project context updated. Review any affected suggestions or artifacts.", "success"); }}><Save size={16} /> Save project setup</Button>
+            {setupChanged && <Button onClick={() => { setProjectName(project.name); setProjectDomain(project.domain); setProjectDescription(project.description); }}>Discard setup changes</Button>}
           </div>
           <Button onClick={() => navigate(`/projects/${project.id}/governance`)}><ShieldCheck size={16} /> Review policies and safeguards</Button>
         </Card>
-        <Card title="Governance & policy setup" description="Edit the full project policy list or ask BA Mate for a reviewable replacement proposal.">
+        <Card title="Project AI processing" description="Choose whether this project may use your configured external AI provider. This preference saves immediately."><ProjectProcessingPreference project={project} update={update} /></Card>
+        <Card title="Governance & policy setup" description="Core policies are locked. Edit project policies or ask BA Mate for a reviewable proposal.">
           <div className="project-settings-fields">
-            {policyDraft.map((policy, index) => <div className="project-policy-row" key={index}><input aria-label={`Policy ${index + 1}`} value={policy} readOnly={['Core responsible BA', 'Human oversight & traceability'].includes(policy)} onChange={event => setPolicyDraft(current => current.map((item, i) => i === index ? event.target.value : item))} />{!['Core responsible BA', 'Human oversight & traceability'].includes(policy) && <IconButton label={`Remove ${policy}`} onClick={() => setPolicyDraft(current => current.filter((_, i) => i !== index))}><Trash2 size={15} /></IconButton>}</div>)}
+            {policyDraft.map((policy, index) => <div className="project-policy-row" key={index}><input aria-label={`Policy ${index + 1}`} value={policy} readOnly={['Core responsible BA', 'Human oversight & traceability'].includes(policy)} onChange={event => setPolicyDraft(current => current.map((item, i) => i === index ? event.target.value : item))} />{['Core responsible BA', 'Human oversight & traceability'].includes(policy) ? <span className="project-policy-locked">Locked</span> : <IconButton label={`Remove ${policy}`} onClick={() => setPolicyDraft(current => current.filter((_, i) => i !== index))}><Trash2 size={15} /></IconButton>}</div>)}
+            {policiesChanged && <p className="context-note" role="status">Policy changes are not saved. Review and save the list when ready.</p>}
             <Button onClick={() => setPolicyDraft(current => [...current, "New project policy"])}><Plus size={16} /> Add policy</Button>
             <label className="editor-field"><span>Describe a policy change to BA Mate</span><textarea value={policyInstruction} onChange={event => setPolicyInstruction(event.target.value)} placeholder="Explain what should be added, changed or removed…" /></label>
             <label className="setup-remote-choice"><input type="checkbox" checked={policyRemoteAllowed} onChange={event => setPolicyRemoteAllowed(event.target.checked)} /> Allow the configured remote model to process this description if selected</label>
             {policyError && <p className="setup-ai-error" role="alert">{policyError}</p>}
             <Button disabled={!policyInstruction.trim() || policyBusy} onClick={() => void askPolicyAssistant()}><Sparkles size={16} /> {policyBusy ? "Preparing proposal…" : "Ask BA Mate"}</Button>
-            {policyProposal && <div className="setup-policy-proposal"><b>Proposed full policy list</b><ul>{policyProposal.map(policy => <li key={policy}>{policy}</li>)}</ul><Button onClick={() => { setPolicyDraft(policyProposal); setPolicyProposal(null); }}>Use this list for review</Button><Button onClick={() => setPolicyProposal(null)}>Discard</Button></div>}
-            <Button kind="primary" onClick={() => { update(p => { p.governancePacks = [...new Set(['Core responsible BA', 'Human oversight & traceability', ...policyDraft.map(item => item.trim()).filter(Boolean)])]; addAudit(p, "Updated project policies", "Project governance", p.governancePacks.join(" · ")); }); appNotice("The reviewed project policy list was saved.", "success"); }}><Save size={16} /> Save policy list</Button>
+            {policyProposal && <PolicyProposalReview current={policyDraft} proposed={policyProposal} onUse={policies => { setPolicyDraft(policies); setPolicyProposal(null); }} onDiscard={() => setPolicyProposal(null)} />}
+            <Button kind="primary" onClick={() => { const policies = [...new Set(['Core responsible BA', 'Human oversight & traceability', ...policyDraft.map(item => item.trim()).filter(Boolean)])]; setPolicyDraft(policies); update(p => { p.governancePacks = policies; addAudit(p, "Updated project policies", "Project governance", p.governancePacks.join(" · ")); }); appNotice("The reviewed project policy list was saved.", "success"); }}><Save size={16} /> Save policy list</Button>
+            {policiesChanged && <Button onClick={() => setPolicyDraft(project.governancePacks)}>Discard policy changes</Button>}
           </div>
         </Card>
         <Card
@@ -3345,6 +3670,7 @@ function TeamView({
                   <small>{member.status}</small>
                 </span>
                 <select
+                  aria-label={`Role for ${member.name}`}
                   value={member.role}
                   onChange={(e) =>
                     update((p) => {
@@ -3362,6 +3688,7 @@ function TeamView({
                 <label>
                   <input
                     type="checkbox"
+                    aria-label={`Can ${member.name} approve baselines`}
                     checked={member.approval}
                     onChange={(e) =>
                       update((p) => {
@@ -3437,7 +3764,7 @@ function TeamView({
   );
 }
 
-function ProjectsHome({
+export function ProjectsHome({
   state,
   onCreate,
   onDelete,
@@ -3448,6 +3775,9 @@ function ProjectsHome({
 }) {
   const nav = useNavigate();
   const [pendingDelete, setPendingDelete] = useState<Project>();
+  const [query, setQuery] = useState("");
+  const search = query.trim().toLocaleLowerCase();
+  const visibleProjects = state.projects.filter(project => [project.name, project.description, project.folderName, project.domain, project.gate].some(value => value?.toLocaleLowerCase().includes(search)));
   return (
     <>
       <PageHeader
@@ -3460,17 +3790,19 @@ function ProjectsHome({
           </Button>
         }
       />
-      {state.projects.length ? (
+      {state.projects.length > 0 && <div className="project-filter"><label>Find a project<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, folder, domain or stage" /></label><span role="status">{visibleProjects.length} of {state.projects.length} {state.projects.length === 1 ? "project" : "projects"}</span>{query && visibleProjects.length > 0 && <button className="text-button" type="button" onClick={() => setQuery("")}>Clear search</button>}</div>}
+      {visibleProjects.length ? (
         <div className="project-card-grid">
-          {state.projects.map((project) => (
+          {visibleProjects.map((project) => (
             <article
               key={project.id}
               className="project-card"
               role="link"
               tabIndex={0}
-              aria-label={`Open ${project.name}`}
+              aria-label={`Open ${projectChoiceLabel(project, state.projects)}`}
               onClick={() => nav(`/projects/${project.id}/overview`)}
               onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   nav(`/projects/${project.id}/overview`);
@@ -3501,12 +3833,12 @@ function ProjectsHome({
                   <b>{blockers(project)}</b> blockers
                 </span>
                 <IconButton
-                  label={`Project setup for ${project.name}`}
+                  label={`Project setup for ${projectChoiceLabel(project, state.projects)}`}
                   className="project-setup-button"
                   onClick={(event) => { event.stopPropagation(); nav(`/projects/${project.id}/team`); }}
                 ><Settings size={17} /></IconButton>
                 <IconButton
-                  label={`Delete ${project.name}`}
+                  label={`Delete ${projectChoiceLabel(project, state.projects)}`}
                   className="delete-project-button"
                   onClick={(event) => {
                     event.stopPropagation();
@@ -3520,6 +3852,8 @@ function ProjectsHome({
             </article>
           ))}
         </div>
+      ) : state.projects.length ? (
+        <EmptyState icon={<Search />} title="No matching projects" description="Try a different name, folder, domain or stage." action={<Button onClick={() => setQuery("")}>Clear search</Button>} />
       ) : (
         <EmptyState
           icon={<FolderKanban />}
@@ -3535,7 +3869,7 @@ function ProjectsHome({
       {pendingDelete && (
         <ConfirmDialog
           title={`Delete “${pendingDelete.name}”?`}
-          description="Its sources, artifacts, governance settings and local activity history will be permanently removed from this browser workspace."
+          description={`Remove this project's records from the current workspace? Project: ${projectChoiceLabel(pendingDelete, state.projects)}. Folder: ${pendingDelete.workspacePath || pendingDelete.folderName || "not recorded"}. Original files remain in the project folder, and older local workspace revisions may retain records. Export a backup first if you may need this project again.`}
           confirmLabel="Delete project"
           onCancel={() => setPendingDelete(undefined)}
           onConfirm={() => {
@@ -4013,7 +4347,7 @@ function ResearchConsole({
     try {
       const settings = await api<{ model: string; configuration_signature: string }>("/api/settings");
       setState(current => ({ ...current, evaluationRuns: [...current.evaluationRuns, {
-        id: uid("EVAL"), connectionSignature: settings.configuration_signature, projectId: runProject, caseId: caseCode.trim(), condition: runCondition, evaluatorCode: participantCode.trim(), datasetVersion: DATASET_VERSION, prototypeVersion: PROTOTYPE_VERSION, model: runCondition === "Manual" ? "none" : settings.model, promptVersion: PROMPT_VERSION, duration: "00:00", status: "Ready",
+        id: uid("EVAL"), connectionSignature: settings.configuration_signature, projectId: runProject, caseId: caseCode.trim(), condition: runCondition, evaluatorCode: participantCode.trim(), datasetVersion: DATASET_VERSION, prototypeVersion: PROTOTYPE_VERSION, frameworkVersion: FRAMEWORK_VERSION, model: runCondition === "Manual" ? "none" : settings.model, promptVersion: PROMPT_VERSION, duration: "00:00", status: "Ready",
       }] }));
       notify("Evaluation run created. Model execution details will be recorded with each AI task.", "success");
     } catch (e) { notify((e as Error).message, "danger"); }
@@ -4090,7 +4424,7 @@ function ResearchConsole({
         </div>
       </div>
       {accountError && <p className="form-error" role="alert">{accountError}</p>}
-      <div className="research-tabs" role="tablist" aria-label="Research console">
+      <div className="research-tabs" role="tablist" aria-label="Research console" onKeyDown={onTabListKeyDown}>
         {([
           ["overview", "Overview"],
           ["stages", "Stage analytics"],
@@ -4100,6 +4434,7 @@ function ResearchConsole({
           <button
             role="tab"
             aria-selected={tab === value}
+            tabIndex={tab === value ? 0 : -1}
             className={tab === value ? "active" : ""}
             key={value}
             onClick={() => setTab(value)}
@@ -4340,7 +4675,7 @@ function RecentWork({ state }: { state: WorkspaceState }) {
                     <b>{event.action}</b>
                     <small>
                       <strong>{project.name}</strong>
-                      <span>{event.object}</span>
+                      <span title={event.detail}>{event.detail || event.object}</span>
                     </small>
                   </span>
                   <time dateTime={event.at}>{formatWorkspaceTime(event.at)}</time>
@@ -4415,23 +4750,36 @@ const workspaceTemplates = [
     domain: "Digital product",
     description:
       "Traceable change impact, requirement updates and document synchronization.",
-    governance: ["Core responsible BA", "Consumer fairness"],
+    governance: ["Core responsible BA", "Product data responsibility"],
     icon: <RefreshCw />,
   },
 ] as const;
 
-function WorkspaceTemplates({
+export function WorkspaceTemplates({
   setState,
 }: {
   setState: Dispatch<SetStateAction<WorkspaceState>>;
 }) {
   const navigate = useNavigate();
+  const [preview, setPreview] = useState<(typeof workspaceTemplates)[number]>();
+  const [projectName, setProjectName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [creationError, setCreationError] = useState("");
+  const creatingRef = useRef(false);
+  const previewTrigger = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closePreview = () => { if (!creatingRef.current) { setPreview(undefined); setCreationError(""); window.requestAnimationFrame(() => previewTrigger.current?.focus()); } };
+  useDialogAccessibility(dialogRef, closePreview, Boolean(preview));
   const useTemplate = async (template: (typeof workspaceTemplates)[number]) => {
+    if (creatingRef.current || !projectName.trim()) return;
+    creatingRef.current = true;
+    setCreating(true);
+    setCreationError("");
     const project = JSON.parse(
       JSON.stringify(freshState().projects[0]),
     ) as Project;
     project.id = template.id + "-" + Date.now().toString(36);
-    project.name = template.name;
+    project.name = projectName.trim();
     project.domain = template.domain;
     project.description = template.description;
     project.folderName = "BA-Mate/" + project.id + "-workspace";
@@ -4457,10 +4805,13 @@ function WorkspaceTemplates({
       project.folderName = reference.folderName;
       addAudit(project, "Materialized project folder", reference.folderName, "Empty local folder created for background project discovery.");
       setState((current) => ({ ...current, projects: [project, ...current.projects] }));
-      appNotice(`${template.name} was created with an empty local folder and no copied evidence.`, "success", "Template workspace created");
+      appNotice(`${project.name} was created with an empty local folder and no copied evidence.`, "success", "Template workspace created");
       navigate("/projects/" + project.id + "/overview");
     } catch (error) {
-      appNotice(error instanceof Error ? error.message : "The project folder could not be created.", "danger", "Template setup failed");
+      setCreationError(error instanceof Error ? error.message : "The project folder could not be created.");
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
     }
   };
   return (
@@ -4482,8 +4833,8 @@ function WorkspaceTemplates({
                 <Badge key={pack}>{pack}</Badge>
               ))}
             </div>
-            <Button kind="primary" onClick={() => void useTemplate(template)}>
-              <Plus /> Use template
+            <Button kind="primary" label={`Preview ${template.name} template`} onClick={(event) => { previewTrigger.current = event.currentTarget; setProjectName(template.name); setCreationError(""); setPreview(template); }}>
+              <Plus /> Preview template
             </Button>
           </article>
         ))}
@@ -4498,16 +4849,55 @@ function WorkspaceTemplates({
           </p>
         </div>
       </div>
+      {preview && <div className="modal-backdrop" role="presentation">
+        <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby="template-preview-title">
+          <header><div><span className="eyebrow">New local project</span><h2 id="template-preview-title">Start with {preview.name}</h2></div><IconButton label="Close template preview" onClick={closePreview} disabled={creating}><X /></IconButton></header>
+          <div className="modal-body template-preview-body">
+            <label className="editor-field"><span>Project name</span><input autoFocus value={projectName} onChange={event => setProjectName(event.target.value)} maxLength={120} /></label>
+            <p>{preview.description}</p>
+            <p><b>Domain:</b> {preview.domain}</p>
+            <p><b>Starting safeguards:</b> {[...new Set(["Core responsible BA", "Human oversight & traceability", ...preview.governance])].join(", ")}.</p>
+            <p>A new local folder will be created. Add your own sources after creation; no project evidence is copied.</p>
+            {creationError && <p role="alert" className="template-preview-error">{creationError}</p>}
+          </div>
+          <footer><Button onClick={closePreview} disabled={creating}>Cancel</Button><Button kind="primary" disabled={creating || !projectName.trim()} onClick={() => void useTemplate(preview)}>{creating ? "Creating project…" : "Create project"}</Button></footer>
+        </div>
+      </div>}
     </>
   );
+}
+
+function UnsavedRecovery({ projects, activeProjectId }: { projects: Project[]; activeProjectId?: string }) {
+  const [selected, setSelected] = useState(activeProjectId ?? projects[0]?.id ?? "");
+  const [exporting, setExporting] = useState(false);
+  const chosen = projects.find(project => project.id === selected) ?? projects.find(project => project.id === activeProjectId) ?? projects[0];
+  const exportRecovery = async () => {
+    if (!chosen || exporting) return;
+    setExporting(true);
+    try {
+      const backup = recordsOnlyRecoveryProject(chosen);
+      downloadBlob(await repository.exportProject(backup), `${chosen.id}-records-recovery.zip`);
+      appNotice(`A records-only recovery copy of ${chosen.name} is downloading. After reopening BA Mate, restore it from Settings and review its missing source originals.`, "warning", "Recovery copy exported");
+    } catch (error) {
+      appNotice(error instanceof Error ? error.message : "The recovery copy could not be created.", "danger", "Recovery failed");
+    } finally { setExporting(false); }
+  };
+  return <section className="unsaved-recovery" aria-labelledby="recovery-title">
+    <div><strong id="recovery-title">Saving is paused</strong><p>Your latest edits are still in this window. Download a recovery copy before closing or reloading; another window may contain different saved work.</p>
+      <p>The recovery ZIP preserves project records but does not include source originals. After reopening, use Settings → Restore project backup, then reconnect matching originals in Sources and review the affected evidence. Repeat for each project with unsaved edits.</p></div>
+    {chosen && <div className="unsaved-recovery__actions"><label>Project to recover <select value={chosen.id} onChange={event => setSelected(event.target.value)}>{projects.map(project => <option key={project.id} value={project.id}>{projectChoiceLabel(project, projects)}</option>)}</select></label>
+      <button type="button" onClick={() => void exportRecovery()} disabled={exporting}>{exporting ? "Preparing recovery…" : "Download recovery copy"}</button></div>}
+  </section>;
 }
 
 function WorkspaceSettings({
   state,
   setState,
+  active,
 }: {
   state: WorkspaceState;
   setState: Dispatch<SetStateAction<WorkspaceState>>;
+  active: boolean;
 }) {
   const [reducedMotion, setReducedMotion] = useState(
     () => localStorage.getItem("ba-mate-reduced-motion") === "true",
@@ -4517,7 +4907,9 @@ function WorkspaceSettings({
   );
   const [confirmReset, setConfirmReset] = useState(false);
   const [backupProjectId, setBackupProjectId] = useState(state.projects[0]?.id ?? "");
+  const selectedBackupProjectId = state.projects.some(project => project.id === backupProjectId) ? backupProjectId : state.projects[0]?.id ?? "";
   const restoreInput = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!active) setConfirmReset(false); }, [active]);
   useEffect(() => {
     localStorage.setItem("ba-mate-reduced-motion", String(reducedMotion));
     localStorage.setItem("ba-mate-comfortable-density", String(comfortable));
@@ -4543,7 +4935,7 @@ function WorkspaceSettings({
     }
   };
   const exportProjectBackup = async () => {
-    const project = state.projects.find((item) => item.id === backupProjectId);
+    const project = state.projects.find((item) => item.id === selectedBackupProjectId);
     if (!project) return;
     try {
       const backup = await prepareProjectBackup(project);
@@ -4560,9 +4952,11 @@ function WorkspaceSettings({
   const restoreProjectBackup = async (file?: File) => {
     if (!file) return;
     try {
-      const restored = await restoreProjectWorkspace(await repository.importProject(file));
+      const imported = await repository.importProject(file);
+      imported.name = `${imported.name} — restored copy`;
+      const restored = await restoreProjectWorkspace(imported);
       setState((current) => ({ ...current, projects: [restored, ...current.projects] }));
-      const unavailable = restored.sources.filter(source => !source.originalBase64).length;
+      const unavailable = missingRestoredOriginalCount(restored);
       appNotice(`${restored.name} was restored as a separate local project. Existing work was not replaced.${unavailable ? ` ${unavailable} source${unavailable === 1 ? " has" : "s have"} no original and require review.` : ""}`,
         unavailable ? "warning" : "success", "Project restored");
     } catch (error) {
@@ -4642,12 +5036,12 @@ function WorkspaceSettings({
                 <b>Project backup</b>
                 <small>Creates a portable ZIP containing available originals, artifacts, audit history and baselines. Sources without available originals are identified on export.</small>
               </span>
-              <select value={backupProjectId} onChange={(event) => setBackupProjectId(event.target.value)}>
-                {state.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              <select aria-label="Project for backup" value={selectedBackupProjectId} onChange={(event) => setBackupProjectId(event.target.value)}>
+                {state.projects.map((project) => <option key={project.id} value={project.id}>{projectChoiceLabel(project, state.projects)}</option>)}
               </select>
             </label>
             <div className="page-actions backup-actions">
-              <Button onClick={exportProjectBackup} disabled={!backupProjectId}>
+              <Button onClick={exportProjectBackup} disabled={!selectedBackupProjectId}>
                 <Download /> Export project backup
               </Button>
               <input ref={restoreInput} type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden onChange={(event) => void restoreProjectBackup(event.target.files?.[0])} />
@@ -4668,7 +5062,7 @@ function WorkspaceSettings({
           </section>
         </Card>
       </div>
-      {confirmReset && (
+      {active && confirmReset && (
         <ConfirmDialog
           title="Reset demonstration data?"
           description="All current local workspace changes and research observations will be replaced with the original demonstration dataset. Export a backup first if you need to retain them."
@@ -4700,8 +5094,6 @@ function GlobalWorkspacePage({
 }) {
   if (page === "templates")
     return <WorkspaceTemplates setState={setState} />;
-  if (page === "settings")
-    return <WorkspaceSettings state={state} setState={setState} />;
   if (page === "recent") return <RecentWork state={state} />;
   if (page === "guide")
     return (
@@ -4717,6 +5109,9 @@ function GlobalWorkspacePage({
           <Card title="3. Review every proposal" description="BA Mate prepares drafts, not decisions."><p>Edit suggested questions, requirements, diagrams and documents before submitting them for review. Evidence links and checks remain visible.</p></Card>
           <Card title="4. Approve in order" description="Stages cannot be skipped."><p>Resolve the checklist, advance through Validate, create an approved baseline in History & approved versions, then complete the goal.</p></Card>
           <Card title="5. Give study feedback" description="Only when an evaluation run is active."><p>Use Stage evaluation after each assigned stage. Ratings are pseudonymous; do not enter client names, project content or credentials.</p></Card>
+          <Card title="Chat and context" description="Use Ask BA Mate from any project page."><p>Type @ and choose a project item with the arrow keys and Enter. Enter sends a message; Shift+Enter adds a line. Stop cancels a request. The assistant keeps temporary drafts while the app is open; use saved conversations for a lasting message history.</p></Card>
+          <Card title="Review selected artifacts" description="Selection can span tabs and searches."><p>Select all applies to shown items. The selection bar counts hidden items and lets you submit drafts or return reviews to draft. Approval stays individual; expand the approval checks to see what remains.</p></Card>
+          <Card title="Connect external AI" description="Provider connection and project permission are separate."><p>Configure your model and session key in Settings, then enable external AI under Project settings → Project AI processing. Confidential sources require a local model. These controls also apply to chat.</p></Card>
           <Card title="If something fails" description="Your local work remains available."><p>Retry the action, check Settings for model or connection status, and export a project backup before any reset or device change.</p></Card>
         </div>
       </>
@@ -4794,7 +5189,7 @@ function prepareFreshProject(project: Project) {
   return project;
 }
 
-function ProjectKickoff({
+export function ProjectKickoff({
   project,
   update,
   onStarted,
@@ -4817,12 +5212,22 @@ function ProjectKickoff({
   const [goalTitle, setGoalTitle] = useState("");
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState("");
+  const startInProgress = useRef(false);
+  const startAttempt = useRef(0);
   const [describeOpen, setDescribeOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [reply, setReply] = useState("");
   const kickoffRef = useRef<HTMLDivElement>(null);
   const describeRef = useRef<HTMLDivElement>(null);
-  useDialogAccessibility(kickoffRef, () => onCancel?.(), !describeOpen);
+  const cancel = () => {
+    startAttempt.current += 1;
+    startInProgress.current = false;
+    setStarting(false);
+    onCancel?.();
+  };
+  useEffect(() => () => { startAttempt.current += 1; }, []);
+  useDialogAccessibility(kickoffRef, () => { if (onCancel) cancel(); }, !describeOpen);
   useDialogAccessibility(
     describeRef,
     () => setDescribeOpen(false),
@@ -4856,14 +5261,36 @@ function ProjectKickoff({
   const intake = project.agentRun?.roles.source_intake?.proposal as { review_questions?: string[] } | undefined;
   const suggestedQuestions = [...new Set([...(intake?.review_questions ?? []), ...(planning?.clarification_questions ?? [])])];
   const start = async () => {
-    if (starting) return;
+    if (startInProgress.current) return;
+    startInProgress.current = true;
     setStarting(true);
+    setStartError("");
+    const attempt = ++startAttempt.current;
+    const finish = (error?: string) => queueMicrotask(() => {
+      if (startAttempt.current !== attempt) return;
+      startAttempt.current += 1;
+      startInProgress.current = false;
+      setStarting(false);
+      if (error) { setStartError(error); notify(error, "warning", "Review goal sources"); }
+      else onStarted?.();
+    });
     try {
       const selected = project.sources.filter(source => selectedSourceIds.includes(source.id));
       if (selected.length !== selectedSourceIds.length || selected.some(source => !goalSelectableSource(source)))
         throw new Error("A selected source changed. Review the current source revision before starting this goal.");
       for (const source of selected) await verifySourceOriginal(project, source);
+      if (startAttempt.current !== attempt) return;
+      const goalState = JSON.stringify([project.activeGoalId, project.goals.map(goal => [goal.id, goal.status])]);
+      const workspaceState = JSON.stringify([project.workspaceId, project.workspaceKind, project.workspacePath, project.folderName]);
       update((p) => {
+        if (startAttempt.current !== attempt) return;
+        const sourcesStillMatch = selected.every(checked => p.sources.some(source =>
+          source.id === checked.id && goalSelectableSource(source) && source.sha256 === checked.sha256 && source.relativePath === checked.relativePath));
+        if (!sourcesStillMatch || JSON.stringify([p.workspaceId, p.workspaceKind, p.workspacePath, p.folderName]) !== workspaceState ||
+            JSON.stringify([p.activeGoalId, p.goals.map(goal => [goal.id, goal.status])]) !== goalState) {
+          finish("The project or a selected source changed while it was checked. Review the current selection and try again.");
+          return;
+        }
         p.goals.forEach((existing) => {
           if (existing.status === "Active") existing.status = "Planned";
         });
@@ -4924,12 +5351,10 @@ function ProjectKickoff({
           goal.id,
           `${goal.kind}: ${goal.description}; ${sourceIds.length} BA-selected sources for this goal.`,
         );
+        finish();
       });
-      onStarted?.();
     } catch (error) {
-      notify(error instanceof Error ? error.message : "The goal could not be started with the selected sources.", "warning", "Review goal sources");
-    } finally {
-      setStarting(false);
+      finish(error instanceof Error ? error.message : "The goal could not be started with the selected sources.");
     }
   };
   return (
@@ -4944,16 +5369,15 @@ function ProjectKickoff({
         <header>
           <div>
             <span className="eyebrow">
-              BA Mate · Initial project conversation
+              BA Mate · Project goal
             </span>
-            <h2>What should we work on first?</h2>
+            <h2>{project.goals.length ? "What would you like to work on?" : "What should we work on first?"}</h2>
             <p>
-              Choose an initial goal, or describe it to BA Mate to receive and
-              apply a proposed setup.
+              Choose a goal, or describe it to BA Mate to receive and apply a proposed setup.
             </p>
           </div>
           {onCancel && (
-            <IconButton label="Close goal creation" onClick={onCancel}>
+            <IconButton label="Close goal creation" onClick={cancel}>
               <X size={18} />
             </IconButton>
           )}
@@ -4962,19 +5386,24 @@ function ProjectKickoff({
           <div className="context-note">
             <Sparkles />
             <div>
-              <b>{project.sourceAnalysisStatus === "ready" ? "Sources discovered; review before using as evidence" : "BA Mate is preparing project context"}</b>
+              <b>{project.sourceAnalysisStatus === "ready" ? project.sources.length ? "Sources discovered; review before using as evidence" : "No sources found in the project folder" : project.sourceAnalysisStatus === "failed" ? "Project folder discovery paused" : "BA Mate is preparing project context"}</b>
               <p>
                 {project.sources.length
                   ? `${project.sources.length} source${project.sources.length === 1 ? "" : "s"} found. Only sources you review and select can support this goal.`
-                  : "Folder discovery and optional local AI planning continue in the background. You can choose a goal now or wait for suggestions."}
+                  : project.sourceAnalysisStatus === "ready" ? "Add sources from the Sources page when you are ready. You can start a goal now." : project.sourceAnalysisStatus === "failed" ? "Reconnect the project folder in project settings. You can still start a goal." : "Folder discovery and optional local AI planning continue in the background. You can choose a goal now or wait for suggestions."}
               </p>
             </div>
           </div>
           <div className="kickoff-source-selection">
             <div><b>Sources for this goal</b><small>Select reviewed sources that are relevant to this goal. You can change the selection later.</small></div>
+            {project.sources.some(goalSelectableSource) && <div className="bulk-selection-controls">
+              <span>{selectedSourceIds.length} selected</span>
+              <button type="button" disabled={starting} onClick={() => setSelectedSourceIds(project.sources.filter(goalSelectableSource).map(source => source.id))}>Select all reviewed</button>
+              <button type="button" disabled={starting || !selectedSourceIds.length} onClick={() => setSelectedSourceIds([])}>Clear selection</button>
+            </div>}
             {project.sources.some(goalSelectableSource) ? project.sources.filter(goalSelectableSource).map(source =>
               <label key={source.id} className="kickoff-source-option">
-                <input type="checkbox" checked={selectedSourceIds.includes(source.id)} onChange={event => setSelectedSourceIds(current =>
+                <input type="checkbox" disabled={starting} checked={selectedSourceIds.includes(source.id)} onChange={event => setSelectedSourceIds(current =>
                   event.target.checked ? [...new Set([...current, source.id])] : current.filter(id => id !== source.id))} />
                 <span><strong>{source.relativePath ?? source.name}</strong><small>{source.type} · Reviewed revision {source.sha256?.slice(0, 12) ?? "unavailable"}</small></span>
               </label>) : <p>No current reviewed source revisions are available yet. You can start the goal and add sources after reviewing them.</p>}
@@ -4983,15 +5412,14 @@ function ProjectKickoff({
           {project.agentRun?.status === "running" && <p className="setup-agent-status" role="status"><RefreshCw size={15} /> BA Mate's source, planning and governance roles are preparing suggestions…</p>}
           {project.agentRun?.status === "failed" && <p className="setup-agent-status" role="status">Background suggestions are unavailable: {project.agentRun.error}. You can continue manually.</p>}
           {project.agentRun?.status === "local_model_required" && <p className="setup-agent-status" role="status">{project.agentRun.message}</p>}
-          {!!planning?.goals?.length && <div className="setup-agent-suggestions"><b>BA Mate suggests</b><p>These are proposals from tentative project context. You choose the work to start.</p>{planning.goals.map(goal => <button key={`${goal.kind}:${goal.title}`} onClick={() => { setKind(goal.kind); setGoalTitle(goal.title); setDescription(goal.reason); }}><Sparkles size={16} /><span><strong>{goal.title}</strong><small>{goal.reason}</small></span><ChevronRight size={16} /></button>)}</div>}
-          {suggestedQuestions.length > 0 && <div className="setup-agent-suggestions"><b>Questions to consider</b><p>Adopt a question to track it. BA Mate cannot answer for a stakeholder.</p>{suggestedQuestions.map(question => <div className="setup-agent-question" key={question}><span>{question}</span><Button disabled={project.clarifications.some(item => item.question === question)} onClick={() => update(p => { const id = uid("CQ"); p.clarifications.push({ id, priority: "Important", question, rationale: "BA Mate suggested this from tentative project context; confirm with the responsible person.", sourceId: "PROJECT-BRIEF", owner: "Business analyst", status: "Unanswered", suggestions: [], affects: [] }); addAudit(p, "Adopted clarification question", id, question); })}>{project.clarifications.some(item => item.question === question) ? "Added" : "Add question"}</Button></div>)}</div>}
           <div className="kickoff-options">
             {options.map(([value, title, detail]) => (
               <button
                 key={value}
                 className={kind === value ? "selected" : ""}
+                disabled={starting}
                 aria-pressed={kind === value}
-                onClick={() => { setKind(value); setGoalTitle(""); }}
+                onClick={() => setKind(value)}
               >
                 <i>
                   {value === "New discovery" ? (
@@ -5016,6 +5444,13 @@ function ProjectKickoff({
               </button>
             ))}
           </div>
+          <div className="kickoff-goal-details">
+            <label>Goal name <input value={goalTitle} disabled={starting} onChange={event => setGoalTitle(event.target.value)} placeholder={kind === "New discovery" ? "Initial project discovery" : kind} /></label>
+            <label>Goal description <textarea value={description} disabled={starting} onChange={event => setDescription(event.target.value)} placeholder={options.find(option => option[0] === kind)?.[2]} rows={3} /></label>
+            <small>Leave a field blank to use the selected goal type's default.</small>
+          </div>
+          {!!planning?.goals?.length && <details className="setup-agent-suggestions"><summary>Suggested goals ({planning.goals.length})</summary><p>These are proposals from tentative project context. You choose the work to start.</p>{planning.goals.map(goal => <button disabled={starting} key={`${goal.kind}:${goal.title}`} aria-pressed={kind === goal.kind && goalTitle === goal.title && description === goal.reason} onClick={() => { setKind(goal.kind); setGoalTitle(goal.title); setDescription(goal.reason); }}><Sparkles size={16} /><span><strong>{goal.title}</strong><small>{goal.reason}</small>{kind === goal.kind && goalTitle === goal.title && description === goal.reason && <small>Selected — review the goal details above.</small>}</span><ChevronRight size={16} /></button>)}</details>}
+          {suggestedQuestions.length > 0 && <details className="setup-agent-suggestions"><summary>Suggested questions ({suggestedQuestions.length})</summary><p>Adopt a question to track it. BA Mate cannot answer for a stakeholder.</p>{suggestedQuestions.map(question => <div className="setup-agent-question" key={question}><span>{question}</span><Button disabled={project.clarifications.some(item => item.question === question)} onClick={() => update(p => { const id = uid("CQ"); p.clarifications.push({ id, priority: "Important", question, rationale: "BA Mate suggested this from tentative project context; confirm with the responsible person.", sourceId: "PROJECT-BRIEF", owner: "Business analyst", status: "Unanswered", suggestions: [], affects: [] }); addAudit(p, "Adopted clarification question", id, question); })}>{project.clarifications.some(item => item.question === question) ? "Added" : "Add question"}</Button></div>)}</details>}
           <div className="ba-mate-action">
             <div>
               <Sparkles size={19} />
@@ -5023,13 +5458,14 @@ function ProjectKickoff({
                 <b>Describe this goal to BA Mate</b>
                 <small>
                   {description
-                    ? "BA Mate’s goal setup is ready to start."
+                    ? "You can ask BA Mate to refine the description above."
                     : "Ask BA Mate to interpret the goal and choose the appropriate workflow."}
                 </small>
               </span>
             </div>
             <Button
               kind="primary"
+              disabled={starting}
               onClick={() => {
                 setDraft(description);
                 setReply("");
@@ -5040,13 +5476,14 @@ function ProjectKickoff({
             </Button>
           </div>
         </div>
+        {startError && <p className="context-note warning" role="alert">{startError}</p>}
         <footer>
           <span className="kickoff-note">
             <ShieldCheck size={15} /> This creates one active goal; future
             addenda and deliverables remain separate goals.
           </span>
           <div className="modal-footer-actions">
-            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+            {onCancel && <Button onClick={cancel}>Cancel</Button>}
             <Button kind="primary" onClick={() => void start()} disabled={starting}>
               <Sparkles size={16} /> {starting ? "Checking sources…" : "Start this goal"}
             </Button>
@@ -5080,6 +5517,7 @@ function ProjectKickoff({
               {!reply ? (
                 <>
                   <textarea
+                    aria-label="Goal description for BA Mate"
                     autoFocus
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -5144,7 +5582,7 @@ function ProjectKickoff({
   );
 }
 
-function GoalsView({
+export function GoalsView({
   project,
   update,
   go,
@@ -5216,7 +5654,7 @@ function GoalsView({
         );
   const deleteGoal = (goal: ProjectGoal) =>
     update((p) => {
-      const removedDeliverableIds = new Set(goal.deliverables);
+      const removedDocumentIds = new Set(p.documents.filter(item => item.goalId === goal.id).map(item => item.id));
       p.goals = p.goals.filter((item) => item.id !== goal.id);
       p.clarifications = p.clarifications.filter(
         (item) => item.goalId !== goal.id,
@@ -5232,7 +5670,7 @@ function GoalsView({
       p.documentSyncProposals = p.documentSyncProposals.filter(
         (item) =>
           !item.targetDocumentId ||
-          !removedDeliverableIds.has(item.targetDocumentId),
+          !removedDocumentIds.has(item.targetDocumentId),
       );
       if (goal.conversationId)
         p.conversations = p.conversations.filter(
@@ -5316,17 +5754,19 @@ function GoalsView({
                 </div>
               </header>
               <p>{goal.description}</p>
-              <div className="goal-workflow-mini">
+              <div className="goal-workflow-mini" role="list" aria-label={`Workflow stages for ${goal.title}`}>
                 {gates.map((gate, index) => (
                   <span
                     key={gate}
+                    role="listitem"
+                    aria-label={`${gate}: ${goal.status === "Completed" || index < goal.gateIndex ? "complete" : index === goal.gateIndex ? "current stage" : "not started"}`}
                     className={classNames(
-                      index < goal.gateIndex && "complete",
-                      index === goal.gateIndex && "current",
+                      (goal.status === "Completed" || index < goal.gateIndex) && "complete",
+                      goal.status !== "Completed" && index === goal.gateIndex && "current",
                     )}
                     title={gate}
                   >
-                    {index < goal.gateIndex ? <Check size={12} /> : index + 1}
+                    {goal.status === "Completed" || index < goal.gateIndex ? <Check size={12} /> : index + 1}
                   </span>
                 ))}
               </div>
@@ -5371,6 +5811,13 @@ function GoalsView({
                   </Button>
                 )}
               </footer>
+              {goal.status !== "Completed" && !goalCanComplete(goal.id) && <p className="goal-completion-hint">
+                {evaluationRunId && !hasCompletionFeedback(goal.id) && goal.gate === "Approve"
+                  ? "Submit Approve-stage feedback before completing this goal."
+                  : goal.gate !== "Approve"
+                    ? "Complete the workflow through Approve before marking this goal complete."
+                    : `Complete before finishing: ${stageReadiness({ ...project, activeGoalId: goal.id }, "Approve").filter(item => !item.complete).map(item => item.label).join(", ")}.`}
+              </p>}
             </article>
           ))}
         </div>
@@ -5412,7 +5859,7 @@ function GoalsView({
   );
 }
 
-function NewProjectModal({
+export function NewProjectModal({
   onClose,
   onCreate,
 }: {
@@ -5503,6 +5950,15 @@ function NewProjectModal({
     },
   };
   const [step, setStep] = useState(1);
+  const setupBodyRef = useRef<HTMLDivElement>(null);
+  const setupHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousSetupStep = useRef(step);
+  useEffect(() => {
+    if (previousSetupStep.current === step) return;
+    previousSetupStep.current = step;
+    if (setupBodyRef.current) setupBodyRef.current.scrollTop = 0;
+    setupHeadingRef.current?.focus({ preventScroll: true });
+  }, [step]);
   const [name, setName] = useState("New BA project");
   const [template, setTemplate] = useState<TemplateName>("Financial services");
   const [folder, setFolder] = useState("Managed project folder");
@@ -5514,6 +5970,8 @@ function NewProjectModal({
   const [newFolder, setNewFolder] = useState("");
   const [createdFolders, setCreatedFolders] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
+  const [creationError, setCreationError] = useState("");
   const [policyPacks, setPolicyPacks] = useState<string[]>([
     "Core responsible BA",
     "Human oversight & traceability",
@@ -5537,7 +5995,7 @@ function NewProjectModal({
   const folderFileRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const aiDialogRef = useRef<HTMLDivElement>(null);
-  useDialogAccessibility(modalRef, onClose, !aiDialog);
+  useDialogAccessibility(modalRef, () => { if (!creatingRef.current) onClose(); }, !aiDialog);
   useDialogAccessibility(
     aiDialogRef,
     () => setAiDialog(null),
@@ -5625,8 +6083,10 @@ function NewProjectModal({
     setAiDialog(null);
   };
   const create = async () => {
-    if (creating) return;
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
+    setCreationError("");
     const p = JSON.parse(
       JSON.stringify(freshState().projects[meta.seed]),
     ) as Project;
@@ -5652,8 +6112,11 @@ function NewProjectModal({
         throw new Error(`Choose a valid supported file name and folder for ${file.name}.`);
       return { file, plan, destination, data: await readFileForWorkspace(file) };
     })); } catch (error) {
+      creatingRef.current = false;
       setCreating(false);
-      appNotice(error instanceof Error ? error.message : "Source files could not be read.", "danger", "Project creation paused");
+      const message = error instanceof Error ? error.message : "Source files could not be read.";
+      setCreationError(message);
+      appNotice(message, "danger", "Project creation paused");
       return;
     }
     p.sources = uploads.map(({ file, plan, destination, data }, index) => ({
@@ -5708,8 +6171,10 @@ function NewProjectModal({
       p.governancePacks.join(" · "),
     );
     p.cloudAllowed = false; p.aiRuns = [];
+    let createdFolder: string | undefined;
     try {
       const reference = await createProjectWorkspace(p.id, p.name, workspaceCandidate);
+      createdFolder = reference.displayPath ?? reference.folderName;
       await createProjectDirectories(reference, createdFolders);
       const written = await writeProjectFiles(reference, uploads.map(({ plan, destination, data }) => ({ name: plan.name, relativePath: destination, data })));
       written.forEach((path, index) => { if (p.sources[index]) { p.sources[index].relativePath = path; p.sources[index].name = path.split("/").at(-1) ?? p.sources[index].name; p.sources[index].originalBase64 = undefined; } });
@@ -5720,8 +6185,12 @@ function NewProjectModal({
       addAudit(p, "Materialized project folder", reference.folderName, `${files.length} uploaded source${files.length === 1 ? " was" : "s were"} copied to the selected locations; existing folder contents will be discovered in the background.`);
       onCreate(p);
     } catch (error) {
-      appNotice(error instanceof Error ? error.message : "The project folder could not be created.", "danger", "Project creation failed");
+      const reason = error instanceof Error ? error.message : "The project folder could not be created.";
+      const message = createdFolder ? `${reason} The folder ${createdFolder} may already contain copied files. It was not removed; check it before retrying.` : reason;
+      setCreationError(message);
+      appNotice(message, "danger", "Project creation failed");
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   };
@@ -5746,9 +6215,9 @@ function NewProjectModal({
             <span className="eyebrow">
               New local project · Step {step} of 3
             </span>
-            <h2>{stageTitles[step - 1]}</h2>
+            <h2 ref={setupHeadingRef} tabIndex={-1}>{stageTitles[step - 1]}</h2>
           </div>
-          <IconButton label="Close" onClick={onClose}>
+          <IconButton label="Close" onClick={onClose} disabled={creating}>
             <X />
           </IconButton>
         </header>
@@ -5766,7 +6235,7 @@ function NewProjectModal({
             </div>
           ))}
         </div>
-        <div className="modal-body">
+        <div className="modal-body" ref={setupBodyRef}>
           {step === 1 && (
             <div className="setup-step">
               <div className="setup-intro">
@@ -5982,7 +6451,7 @@ function NewProjectModal({
                     </small>
                   </span>
                 </div>
-                <Button onClick={() => describeToBaMate("governance")}>
+                <Button disabled={creating} onClick={() => describeToBaMate("governance")}>
                   <Sparkles size={16} /> Describe to BA Mate
                 </Button>
               </div>
@@ -5991,11 +6460,10 @@ function NewProjectModal({
                   <div>
                     <b>Governance & policy pack</b>
                     <p>
-                      Every policy remains editable after BA Mate applies
-                      recommendations.
+                      Core policies are locked; other policies can be edited after recommendations are applied.
                     </p>
                   </div>
-                  <Button onClick={addPolicy}>
+                  <Button disabled={creating} onClick={addPolicy}>
                     <Plus size={15} /> Add policy
                   </Button>
                 </header>
@@ -6003,7 +6471,9 @@ function NewProjectModal({
                   <label key={`${pack}-${index}`}>
                     <ShieldCheck size={16} />
                     <input
+                      aria-label={`Policy ${index + 1}`}
                       value={pack}
+                      disabled={creating}
                       readOnly={['Core responsible BA', 'Human oversight & traceability'].includes(pack)}
                       onChange={(e) =>
                         setPolicyPacks((current) =>
@@ -6013,9 +6483,10 @@ function NewProjectModal({
                         )
                       }
                     />
-                    {!['Core responsible BA', 'Human oversight & traceability'].includes(pack) && (
+                    {['Core responsible BA', 'Human oversight & traceability'].includes(pack) ? <span className="project-policy-locked">Locked</span> : (
                       <IconButton
                         label={`Remove ${pack}`}
+                        disabled={creating}
                         onClick={() =>
                           setPolicyPacks((current) =>
                             current.filter(
@@ -6033,7 +6504,7 @@ function NewProjectModal({
               <div className="context-note warning">
                 <ShieldCheck />
                 <div>
-                  <b>Governance is layered and editable</b>
+                  <b>Governance uses layered safeguards</b>
                   <p>
                     Human approval, privacy, uncertainty disclosure and
                     traceability remain core safeguards.
@@ -6043,8 +6514,9 @@ function NewProjectModal({
             </div>
           )}
         </div>
+        {creationError && <p role="alert" className="context-note warning">{creationError}</p>}
         <footer>
-          <Button onClick={step === 1 ? onClose : () => setStep(step - 1)}>
+          <Button disabled={creating} onClick={step === 1 ? onClose : () => setStep(step - 1)}>
             {step === 1 ? "Cancel" : "Back"}
           </Button>
           {step < 3 ? (
@@ -6094,6 +6566,7 @@ function NewProjectModal({
               {!aiProposal ? (
                 <>
                   <textarea
+                    aria-label={aiDialog === "project" ? "Project description for BA Mate" : "Governance needs for BA Mate"}
                     autoFocus
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
@@ -6180,10 +6653,13 @@ export default function App() {
     () => localStorage.getItem("ba-mate-assistant-pinned") === "true",
   );
   const [activeReference, setActiveReference] = useState<ArtifactReference>();
+  const [referenceProjectId, setReferenceProjectId] = useState<string>();
   const [newProject, setNewProject] = useState(false);
   const [notices, setNotices] = useState<NoticeItem[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
+  const settingsVisited = useRef(false);
+  if (location.pathname === "/settings") settingsVisited.current = true;
   useEffect(() => {
     if (pageContentRef.current) {
       pageContentRef.current.scrollTop = 0;
@@ -6194,6 +6670,7 @@ export default function App() {
     repository
       .load()
       .then((saved) => {
+        savedState.current = saved ?? currentState.current;
         if (saved) setState(saved);
         setReady(true);
       })
@@ -6201,6 +6678,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!ready) return;
+    if (saveFailureNotified.current) { setSaveStatus("Saving paused"); return; }
+    if (state === savedState.current) return;
     setSaveStatus("Saving…");
     const timer = window.setTimeout(() => {
       repository.save(state).then(() => {
@@ -6211,7 +6690,7 @@ export default function App() {
         setSaveStatus("Saving paused");
         if (!saveFailureNotified.current) {
           saveFailureNotified.current = true;
-          notify(`Recent changes could not be saved. ${error.message} Export a project backup before closing.`, "danger", "Saving paused");
+          notify(`Recent changes could not be saved. ${error.message} Use the recovery panel before closing.`, "danger", "Saving paused");
         }
       });
     }, 300);
@@ -6293,11 +6772,24 @@ export default function App() {
   }, [ready]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (ready && savedState.current !== currentState.current) { event.preventDefault(); event.returnValue = ""; }
+      if (ready && (savedState.current !== currentState.current || projectSettingsDrafts.size > 0 || clarificationDrafts.size > 0 || conversationDrafts.size > 0 || [...assistantSessions.values()].some(session => session.prompt.trim()))) { event.preventDefault(); event.returnValue = ""; }
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [ready]);
+  useEffect(() => {
+    if (!ready) return;
+    for (const id of projectSettingsDrafts.keys()) if (!state.projects.some(project => project.id === id)) projectSettingsDrafts.delete(id);
+    for (const key of clarificationDrafts.keys()) {
+      const [projectId, questionId] = JSON.parse(key) as [string, string];
+      if (!state.projects.some(project => project.id === projectId && project.clarifications.some(question => question.id === questionId))) clarificationDrafts.delete(key);
+    }
+    for (const id of assistantSessions.keys()) if (!state.projects.some(project => project.id === id)) assistantSessions.delete(id);
+    for (const key of conversationDrafts.keys()) {
+      const [projectId, conversationId] = JSON.parse(key) as [string, string];
+      if (!state.projects.some(project => project.id === projectId && project.conversations.some(conversation => conversation.id === conversationId))) conversationDrafts.delete(key);
+    }
+  }, [ready, state.projects]);
   useEffect(() => {
     const listener = (event: Event) => {
       const incoming = (event as CustomEvent<AppNoticeDetail | string>).detail;
@@ -6327,6 +6819,7 @@ export default function App() {
   }, [inspectorPinned]);
   const match = location.pathname.match(/^\/projects\/([^/]+)(?:\/([^/]+))?/);
   const project = state.projects.find((p) => p.id === match?.[1]);
+  useEffect(() => { setActiveReference(undefined); setInspector(false); }, [project?.id]);
   const section = match?.[2] ?? "overview";
   useEffect(() => {
     const globalLabel = globalItems.find(
@@ -6492,8 +6985,9 @@ export default function App() {
       case "conversations":
         return (
           <ConnectedConversations
+            key={project.id}
             {...props}
-            automaticContext={activeReference}
+            automaticContext={referenceProjectId === project.id ? activeReference : undefined}
             onNavigate={(path) => navigate(path)}
           />
         );
@@ -6505,10 +6999,12 @@ export default function App() {
             {...props}
             onAsk={(ref) => {
               setActiveReference(ref);
+              setReferenceProjectId(project.id);
               setInspector(true);
             }}
             onOpenConversation={(ref) => {
               setActiveReference(ref);
+              setReferenceProjectId(project.id);
               navigate(`/projects/${project.id}/conversations`);
             }}
           />
@@ -6536,7 +7032,7 @@ export default function App() {
           />
         );
       case "team":
-        return <TeamView {...props} />;
+        return <TeamView key={project.id} {...props} />;
       default:
         return <NotFoundPage scope="section" />;
     }
@@ -6551,7 +7047,7 @@ export default function App() {
     <NotFoundPage scope="project" />
   ) : project ? (
     <EvaluationContext.Provider value={state.evaluationRuns.find(r => r.status === "Running" && r.projectId === project.id)}>
-      {(["artifacts", "diagrams", "documents", "changes", "governance"] as string[]).includes(section) && <details className="studio-ai-panel"><summary title="Open task-specific AI assistance">Task AI</summary><WorkflowWorkbench key={`${project.id}:${section}`} project={project} update={update} initialTask={section === "diagrams" ? "diagram" : section === "documents" ? "document" : section === "changes" ? "impact" : section === "governance" ? "validate" : "requirements"} /></details>}
+      {(["artifacts", "diagrams", "documents", "changes", "governance"] as string[]).includes(section) && <details className="studio-ai-panel" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}><summary><span>Task AI</span><span className="studio-ai-close">Close</span></summary><WorkflowWorkbench key={`${project.id}:${section}`} project={project} update={update} initialTask={section === "diagrams" ? "diagram" : section === "documents" ? "document" : section === "changes" ? "impact" : section === "governance" ? "validate" : "requirements"} /></details>}
       {["loan", "leave", "returns"].includes(project.id) && <p className="context-note warning">Demonstration project: prefilled artifacts and scores are synthetic examples, not research results. Create a fresh project for your own work.</p>}
       {renderProject()}
       {project.goals.length === 0 && (
@@ -6569,7 +7065,7 @@ export default function App() {
         }))
       }
     />
-  ) : globalPage === "research" ? (
+  ) : globalPage === "settings" ? null : globalPage === "research" ? (
     <ResearchConsole state={state} setState={setState} />
   ) : (
     <GlobalWorkspacePage page={globalPage} state={state} setState={setState} />
@@ -6612,7 +7108,8 @@ export default function App() {
           inspectorOpen={inspector}
           assistantAvailable={section !== "conversations"}
         />
-        <main className="page-content" ref={pageContentRef}>
+        <main className={classNames("page-content", Boolean(project && section === "conversations") && "conversation-page")} ref={pageContentRef}>
+          {saveStatus === "Saving paused" && <UnsavedRecovery projects={state.projects} activeProjectId={project?.id} />}
           <Suspense
             fallback={
               <div className="route-loading" role="status">
@@ -6623,6 +7120,7 @@ export default function App() {
           >
             {content}
           </Suspense>
+          {settingsVisited.current && <div hidden={location.pathname !== "/settings"}><WorkspaceSettings state={state} setState={setState} active={location.pathname === "/settings"} /></div>}
         </main>
       </div>
       {project && section !== "conversations" && inspector && !inspectorPinned && (
@@ -6635,13 +7133,15 @@ export default function App() {
       {project && section !== "conversations" && inspector && (
         <Suspense fallback={null}>
           <AssistantDrawer
+            key={project.id}
+            onOpenConversation={() => { setInspector(false); navigate(`/projects/${project.id}/conversations`); }}
             project={project}
-            context={activeReference}
+            context={referenceProjectId === project.id ? activeReference : undefined}
             evaluationActive={state.evaluationRuns.some(r => r.status === "Running" && r.projectId === project.id)}
             pinned={inspectorPinned}
             onPin={() => setInspectorPinned(!inspectorPinned)}
             onClose={() => setInspector(false)}
-            onNavigate={(path) => navigate(path)}
+            onNavigate={(path) => { if (!inspectorPinned) setInspector(false); navigate(path); }}
           />
         </Suspense>
       )}{" "}

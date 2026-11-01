@@ -22,6 +22,10 @@ if args.setup:
     if sys.version_info < (3, 10): raise SystemExit('Python 3.10 or newer is required.')
     if not python.exists(): venv.create(ROOT / 'backend/.venv', with_pip=True)
     subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(ROOT / 'backend/requirements.txt')], check=True)
+    try:
+        subprocess.run([str(python), '-c', "import tiktoken; tiktoken.get_encoding('o200k_base')"], check=True, timeout=60)
+    except (subprocess.SubprocessError, OSError):
+        print('Tokenizer data unavailable; requests will use a conservative estimate until setup is rerun.')
     npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
     if not npm: raise SystemExit('Install Node.js and npm, then run setup again.')
     subprocess.run([npm, 'ci'], cwd=ROOT / 'frontend', check=True)
@@ -31,6 +35,9 @@ if args.setup:
 if not python.exists() or not (ROOT / 'frontend/dist/index.html').exists():
     raise SystemExit('Run python3 start.py --setup first. On Windows use: py start.py --setup')
 with socket.socket() as sock:
+    # Permit restarting after prior connections entered TIME_WAIT. A listening
+    # service on this address still makes the bind fail.
+    if os.name != 'nt': sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try: sock.bind(('127.0.0.1', args.port))
     except OSError: raise SystemExit(f'Port {args.port} is in use. Close the other BA Mate service or choose --port 8001.')
 env = {**os.environ, 'BA_MATE_PORT': str(args.port)}

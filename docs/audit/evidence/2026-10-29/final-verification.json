@@ -1,0 +1,50 @@
+{
+  "workspace_revision": 668,
+  "other_original_projects_unchanged": {
+    "iLectro": true,
+    "APNK Mini POS": true,
+    "Pan Asia Bank App": true
+  },
+  "source_sha256_matches": true,
+  "current_profile": {
+    "provider": "openrouter",
+    "model": "nvidia/nemotron-3.5-super-vl:free",
+    "context_mode": "model",
+    "output_tokens": 32768,
+    "timeout_seconds": 300,
+    "has_key": true
+  },
+  "discovered_limits": {
+    "status": "available",
+    "provider": "openrouter",
+    "model": "nvidia/nemotron-3.5-super-vl:free",
+    "context_tokens": 1000000,
+    "output_tokens": 131072,
+    "supported_parameters": [
+      "include_reasoning",
+      "max_tokens",
+      "reasoning",
+      "response_format",
+      "seed",
+      "structured_outputs",
+      "temperature",
+      "tool_choice",
+      "tools",
+      "top_p"
+    ],
+    "note": "Published model/top-provider limits; individual serving endpoints and account quotas may be lower."
+  },
+  "health": {
+    "status": "ok",
+    "version": "0.4.0",
+    "mode": "local",
+    "training": false
+  },
+  "backend_tests": 60,
+  "frontend_tests": 71,
+  "typecheck": "passed",
+  "frontend_build": "passed with large-bundle warning",
+  "remaining_apnk_blockers": 3,
+  "approved_baselines": 0,
+  "retained_revision_payload_bytes": 379117824
+}

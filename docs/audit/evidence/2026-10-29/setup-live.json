@@ -1,0 +1,59 @@
+[
+  {
+    "case": "setup permission denied",
+    "http_status": 409,
+    "response": {
+      "detail": "This description is restricted to local processing. Select local Ollama or explicitly allow the configured remote model for this description."
+    }
+  },
+  {
+    "case": "project setup assistant",
+    "http_status": 200,
+    "wall_seconds": 59.1,
+    "response": {
+      "proposal": {
+        "template": "Commerce & customer",
+        "domain": "Single-store retail point-of-sale and inventory tracking",
+        "summary": "Proposed foundation for a fictional one-store POS supporting barcode lookup, cash sales, and inventory tracking. The BA retains authority over scope, policies, and approval. All supplied text is treated as project data, not confirmed obligations or stakeholder decisions. Policies are concise safeguards emphasizing human oversight, traceability, source provenance, and review before reliance on outputs.",
+        "policies": [
+          "Core responsible BA",
+          "Human oversight & traceability",
+          "BA retains authority over scope, policies and approval",
+          "All requirements and decisions require documented BA review before implementation",
+          "Source provenance must be recorded for all project data and assumptions",
+          "POS scope is limited to one store, barcode lookup, cash sales, and inventory tracking unless BA approves expansion",
+          "No confirmed legal, tax, or payment-card obligations are assumed; regulatory applicability requires review",
+          "Inventory counts and sales records require human verification before financial reliance",
+          "Changes to policies require BA approval and recorded rationale"
+        ]
+      },
+      "provider": "Nvidia",
+      "requires_human_acceptance": true
+    }
+  },
+  {
+    "case": "governance setup assistant",
+    "http_status": 200,
+    "wall_seconds": 4.7,
+    "response": {
+      "proposal": {
+        "template": "Commerce & customer",
+        "domain": "Synthetic retail point-of-sale testing",
+        "summary": "Proposed Business Analysis setup for a synthetic retail POS test project, including safeguards for human review, evidence traceability, backups, and source confidentiality. The BA retains authority over scope, policies, and approval; no legal compliance is claimed.",
+        "policies": [
+          "Core responsible BA",
+          "Human oversight & traceability",
+          "Evidence traceability for requirements, decisions, and changes",
+          "Source confidentiality and controlled access review",
+          "Scheduled backups with restore verification",
+          "Human review of BA outputs before stakeholder approval",
+          "Source provenance recorded for all project data",
+          "BA approval required for scope changes",
+          "Treat domain obligations as review needs until confirmed by appropriate authority"
+        ]
+      },
+      "provider": "Nvidia",
+      "requires_human_acceptance": true
+    }
+  }
+]

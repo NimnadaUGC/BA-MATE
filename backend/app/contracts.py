@@ -20,8 +20,10 @@ class RunRequest(BaseModel):
     goal_id: str | None = None
     task: Literal['clarify', 'requirements', 'validate', 'diagram', 'document', 'impact', 'conversation', 'conversation-action']
     prompt: str = Field(min_length=1, max_length=12000)
-    context: list[Evidence] = Field(default_factory=list, max_length=100)
-    history: list[HistoryMessage] = Field(default_factory=list, max_length=30)
+    # The token budget, rather than a small fixed item count, determines what
+    # reaches the model. Existing per-item extraction/text bounds still apply.
+    context: list[Evidence] = Field(default_factory=list)
+    history: list[HistoryMessage] = Field(default_factory=list)
     condition: Literal['Generic AI', 'Proposed workflow'] = 'Proposed workflow'
     cloud_allowed: bool = False
     expected_configuration: str | None = Field(default=None, max_length=64)
@@ -42,9 +44,9 @@ class RequirementDraft(BaseModel):
     assumptions: list[str]
 
 class StoryDraft(BaseModel):
-    role: str
-    goal: str
-    value: str
+    role: str = Field(description='The user or stakeholder role, without the phrase As a.')
+    goal: str = Field(description='The action the role wants to perform, without the phrase I want to.')
+    value: str = Field(description='The benefit of the action, without the phrase so that.')
     acceptance_criteria: list[str]
     source_ids: list[str]
 

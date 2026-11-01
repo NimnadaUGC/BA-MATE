@@ -1,0 +1,21 @@
+{
+  "restore_original_hash_matches": true,
+  "restored_artifact_arrays_match_before_rename": true,
+  "restored_cloud_allowed": false,
+  "snapshot_restore_name": "APNK POS \u2014 audit recovery copy",
+  "snapshot_restore_gate": "Validate",
+  "snapshot_restore_retained_recovery": true,
+  "apnk_totals": {
+    "sources": 1,
+    "clarifications": 8,
+    "requirements": 2,
+    "stories": 2,
+    "registers": 2,
+    "traceLinks": 14,
+    "checks": 2,
+    "diagrams": 1,
+    "documents": 1,
+    "versions": 1,
+    "aiRuns": 8
+  }
+}

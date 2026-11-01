@@ -85,6 +85,21 @@ class ProviderContractTests(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue(public['has_key'])
                     self.assertNotIn('api_key', public)
 
+    async def test_gemini_latest_alias_uses_beta_without_changing_model(self):
+        def handler(request):
+            self.assertEqual(request.url.path, '/v1beta/interactions')
+            self.assertEqual(request.headers['x-goog-api-key'], 'test-key')
+            body = json.loads(request.content)
+            self.assertEqual(body['model'], 'gemini-flash-latest')
+            self.assertFalse(body['store'])
+            self.assertEqual(body['response_format']['schema'], SCHEMA)
+            return httpx.Response(200, json=provider_payload('gemini'))
+
+        real_client = httpx.AsyncClient
+        with patch('app.providers.httpx.AsyncClient', side_effect=lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs)):
+            result = await ModelProvider(ProviderConfig(provider='gemini', model='gemini-flash-latest', api_key='test-key')).complete(MESSAGES, SCHEMA)
+        self.assertEqual(result['text'], 'response')
+
     async def test_gemini_allows_google_api_key_as_environment_fallback(self):
         with patch.dict(os.environ, {'GOOGLE_API_KEY': 'google-env'}, clear=True):
             self.assertEqual(runtime.environment_credential('gemini'), 'google-env')

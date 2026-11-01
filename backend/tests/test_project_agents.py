@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from app import runtime
 from app.project_analysis import _scan, _snapshots
-from app.project_agents import AgentStart, _run, _signature, _write, _tasks, _context_manifest, agent_status, agent_history, start_agents, run_registered_projects_once
+from app.project_agents import AgentStart, _run, _signature, _write, _tasks, _context_manifest, _snapshot_sources_current, agent_status, agent_history, start_agents, run_registered_projects_once
 from app.setup_assist import SetupAssistRequest, propose_setup
 
 
@@ -45,6 +45,54 @@ class FolderAnalysisTests(unittest.TestCase):
 
 
 class AgentProposalTests(unittest.IsolatedAsyncioTestCase):
+    async def test_changed_original_cannot_start_with_cached_extraction(self):
+        workspace_id = '00000000-0000-4000-8000-000000000011'
+        with tempfile.TemporaryDirectory() as temporary, patch.object(runtime, 'DATA_DIR', Path(temporary)):
+            root = Path(temporary) / 'project'; root.mkdir()
+            source = root / 'notes.txt'; source.write_text('Original reviewed note')
+            _scan(workspace_id, root)
+            snapshot = _snapshots[workspace_id]
+            digest = snapshot['sources']['notes.txt']['sha256']
+            registry = {workspace_id: {'project_id': 'p1', 'path': str(root)}}
+            request = AgentStart(project_id='p1', workspace_id=workspace_id, brief='Review', governance=[],
+                active_goal={'title': 'Review'}, approved_sources=[{'path': 'notes.txt', 'sha256': digest}])
+            with patch.object(runtime, 'config', runtime.ProviderConfig()), \
+                    patch('app.project_agents._read_registry', return_value=registry), \
+                    patch('app.project_files._read_registry', return_value=registry), \
+                    patch('app.project_agents.analysis_snapshot', return_value=snapshot), \
+                    patch('app.project_agents._run', new=AsyncMock()) as run:
+                self.assertTrue(_snapshot_sources_current(workspace_id, snapshot['sources'], request.approved_sources))
+                source.write_text('Changed before the next scan')
+                response = await start_agents(request)
+                self.assertEqual(response['status'], 'waiting_for_sources')
+                self.assertIn('changed or are unavailable', response['message'])
+                run.assert_not_awaited()
+
+    async def test_changed_original_during_intake_discards_partial_proposals(self):
+        workspace_id = '00000000-0000-4000-8000-000000000012'
+        with tempfile.TemporaryDirectory() as temporary, patch.object(runtime, 'DATA_DIR', Path(temporary)):
+            root = Path(temporary) / 'project'; root.mkdir()
+            source = root / 'notes.txt'; source.write_text('Original reviewed note')
+            _scan(workspace_id, root)
+            sources = _snapshots[workspace_id]['sources']
+            digest = sources['notes.txt']['sha256']
+            request = AgentStart(project_id='p1', workspace_id=workspace_id, brief='Review', governance=[],
+                active_goal={'title': 'Review'}, approved_sources=[{'path': 'notes.txt', 'sha256': digest}])
+            async def ask(role, _payload, _schema):
+                if role == 'source intake':
+                    source.write_text('Changed while the first role was running')
+                    return {'summary': 'Old intake', 'topics': [], 'review_questions': []}
+                if role == 'next-work planning': return {'summary': 'Old plan', 'goals': [], 'clarification_questions': []}
+                if role == 'governance review': return {'summary': 'Old governance', 'review_points': []}
+                self.fail('Drafting must not run with the changed source')
+            with patch('app.project_files._read_registry', return_value={workspace_id: {'path': str(root)}}), \
+                    patch('app.project_agents._ask', new=ask):
+                await _run(request, sources, 'revision', True)
+            result = agent_status(workspace_id)
+            self.assertEqual(result['status'], 'failed')
+            self.assertEqual(result['roles'], {})
+            self.assertIn('Project sources changed', result['error'])
+
     async def test_manifest_discloses_exact_source_selection_and_truncation(self):
         request = AgentStart(project_id='p1', workspace_id='00000000-0000-4000-8000-000000000008',
             brief='Improve approvals', governance=[], active_goal={'title': 'Clarify approvals'},

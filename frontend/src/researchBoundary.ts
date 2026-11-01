@@ -43,7 +43,7 @@ export interface UploadBatch {
 }
 const uuid = () => crypto.randomUUID();
 const runFor = (runs: EvaluationRun[], id?: string) => runs.find(run => run.id === id);
-const runVersions = (run: EvaluationRun) => ({ app: run.prototypeVersion, framework: 'ba-framework-0.4.0', protocol: RESEARCH_PROTOCOL_VERSION, instrument: RESEARCH_INSTRUMENT_VERSION, task_case: run.datasetVersion, prompt_schema: run.promptVersion, model_profile: run.model });
+const runVersions = (run: EvaluationRun) => ({ app: run.prototypeVersion, framework: run.frameworkVersion ?? 'ba-framework-0.4.0', protocol: RESEARCH_PROTOCOL_VERSION, instrument: RESEARCH_INSTRUMENT_VERSION, task_case: run.datasetVersion, prompt_schema: run.promptVersion, model_profile: run.model });
 const eventForTelemetry = (event: ResearchTelemetryEvent, run: EvaluationRun): UploadEvent => ({
   event_id: event.id, occurred_at: event.at, run_code: run?.id, condition: run?.condition, versions: runVersions(run),
   measurement: 'telemetry', stage: event.stage, category: event.type, duration_ms: event.durationMs, outcome: event.successful ? 'success' : 'failure',

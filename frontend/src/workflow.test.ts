@@ -1,7 +1,10 @@
+import { pinSyntheticSources } from "./testSourceFixtures";
+import { modelSourceProblems } from "./sourceScope";
 import { describe, expect, it } from 'vitest';
 import { approvalIssuesForArtifact, baselineIssues, restoreSnapshot, captureSnapshot, enforceWorkingVersions, freshState, IndexedDbWorkspaceRepository, revisionManifest, traceCoverage } from './store';
 import { applyProposal, evidenceFingerprint, type SavedRun, type Proposal } from './workflow';
 import { projectEvidence } from './modelGateway';
+import { buildMarkdown, resolveExport } from './exporters';
 const empty: Proposal = { summary: 'Review', questions: [], requirements: [], stories: [], findings: [], diagrams: [], sections: [], limitations: [] };
 function prepared() {
   const p = freshState().projects[0];
@@ -18,6 +21,28 @@ describe('research workflow invariants', () => {
     expect(p.requirements.at(-1)?.status).toBe('draft');
     expect(p.traceLinks.at(-1)?.status).toBe('Pending');
     expect(() => applyProposal(p, run.id, ['requirements:0'], run.proposal)).toThrow('already been reviewed');
+  });
+  it('retains all reviewed question context and exposes it in the queue context and exports', () => {
+    const { p, run } = prepared();
+    const source = p.sources[0];
+    run.receipt.included_reference_ids.push(source.id);
+    run.proposal.questions = [{ question: 'Which rule applies?', rationale: 'Review needed', source_ids: ['PROJECT-BRIEF', source.id], priority: 'Important' }];
+    applyProposal(p, run.id, ['questions:0'], run.proposal);
+    const question = p.clarifications.at(-1)!;
+    expect(question.sourceId).toBe('PROJECT-BRIEF');
+    expect(question.sourceIds).toEqual(['PROJECT-BRIEF', source.id]);
+    const context = projectEvidence(p).find(item => item.id === question.id)!;
+    expect(context.content).toContain(`Recorded context: PROJECT-BRIEF, ${source.id}`);
+    const doc = p.documents[0]; doc.sections[0].blocks[0].linkedIds = [question.id];
+    expect(buildMarkdown(resolveExport(p, doc.id))).toContain(`Recorded context: PROJECT-BRIEF, ${source.id}`);
+  });
+  it('uses the legacy single source and protects confidential question context', () => {
+    const { p } = prepared(), question = p.clarifications[0], source = p.sources[0];
+    question.status = 'Answered'; question.sourceId = source.id; delete question.sourceIds;
+    source.classification = 'Confidential';
+    const context = projectEvidence(p).find(item => item.id === question.id)!;
+    expect(context.content).toContain(`Recorded context: ${source.id}`);
+    expect(context.confidential).toBe(true);
   });
   it('retains original model output separately from human revisions', () => {
     const { p, run } = prepared();
@@ -67,6 +92,11 @@ describe('research workflow invariants', () => {
     expect(restored.versions).toEqual(p.versions);
     expect(restored.cloudAllowed).toBe(false);
     expect(restored.audit).toHaveLength(1);
+  });
+  it('explains invalid backup files without exposing a ZIP library error', async () => {
+    const repo = new IndexedDbWorkspaceRepository();
+    const invalid = new TextEncoder().encode('not a zip').buffer as unknown as File;
+    await expect(repo.importProject(invalid)).rejects.toThrow('not a valid project backup ZIP');
   });
   it('invalidates reviewed evidence paths after a stakeholder answer changes', () => {
     const { p } = prepared();
@@ -136,11 +166,26 @@ describe('research workflow invariants', () => {
     p.requirements.push({ ...p.requirements[0], id: 'UNLINKED' });
     expect(traceCoverage(p)).toBeLessThan(100);
   });
+  it('does not invalidate other artifacts when a shared source gains a new trace link', () => {
+    const before = freshState().projects[0];
+    const original = before.requirements[0];
+    before.requirements = [original]; before.stories = []; before.diagrams = []; before.documents = [];
+    original.status = 'approved';
+    before.traceLinks = [{ id: 'existing', from: 'PROJECT-BRIEF', to: original.id, fromRevision: 1, toRevision: original.version, relation: 'supports', status: 'Verified' }];
+    const after = structuredClone(before);
+    const added = { ...structuredClone(original), id: 'FR-new', status: 'draft' as const, goalId: 'other-goal' };
+    after.requirements.push(added);
+    after.traceLinks.push({ id: 'new', from: 'PROJECT-BRIEF', to: added.id, relation: 'supports', status: 'Pending' });
+    enforceWorkingVersions(before, after);
+    expect(after.requirements[0].status).toBe('approved');
+    expect(after.traceLinks[0].status).toBe('Verified');
+    expect(after.traceLinks[1].status).toBe('Pending');
+  });
   it('does not approve a rounded 100 percent coverage with an unlinked artifact', () => {
     const p = freshState().projects[0];
     p.stories = [];
     p.requirements = Array.from({ length: 201 }, (_, i) => ({ ...p.requirements[0], id: `FR-${i}`, status: 'in-review' as const }));
-    p.traceLinks = p.requirements.slice(0, 200).map(r => ({ id: `TR-${r.id}`, from: 'PROJECT-BRIEF', to: r.id, relation: 'Verified evidence', status: 'Verified' as const }));
+    p.traceLinks = p.requirements.slice(0, 200).map(r => ({ id: `TR-${r.id}`, from: 'PROJECT-BRIEF', to: r.id, fromRevision: 1, toRevision: r.version, relation: 'Verified evidence', status: 'Verified' as const }));
     expect(traceCoverage(p)).toBe(100);
     expect(baselineIssues(p)).toContain('Verify an evidence path for every requirement and user story.');
   });
@@ -163,6 +208,7 @@ describe('research workflow invariants', () => {
   });
   it('pins source revisions and includes scoped decisions and governance', () => {
     const project = freshState().projects[0];
+    pinSyntheticSources(project);
     project.sources[0].content = 'Reviewed workshop evidence';
     project.goals[0].sourceIds = ['SRC-01'];
     project.registers.push({ id: 'DEC-1', type: 'Decision', title: 'Manager decides exceptions', owner: 'Owner', status: 'approved', version: 4, goalId: project.activeGoalId });
@@ -170,6 +216,23 @@ describe('research workflow invariants', () => {
     expect(evidence.find(item => item.id === 'SRC-01')).toMatchObject({ version: project.sources[0].version ?? 1, provenance: expect.stringContaining('reviewed source') });
     expect(evidence.find(item => item.id === 'DEC-1')).toMatchObject({ version: 4, type: 'Decision' });
     expect(evidence.some(item => item.type === 'Governance check')).toBe(true);
+  });
+  it('does not send a newly reviewed source until its changed revision is selected for the goal', () => {
+    const project = freshState().projects[0];
+    pinSyntheticSources(project);
+    const goal = project.goals[0], source = project.sources[0];
+    goal.sourceIds = [source.id];
+    source.content = 'Updated source text';
+    source.sha256 = 'new-hash';
+    const reference = { id: source.id, type: 'Source' as const, label: source.name };
+    expect(projectEvidence(project, [reference]).some(item => item.id === source.id)).toBe(false);
+    expect(modelSourceProblems(project, [reference])).toEqual([source.id]);
+    goal.sourceRevisionPins![source.id] = 'new-hash';
+    expect(projectEvidence(project, [reference]).some(item => item.id === source.id)).toBe(true);
+    expect(modelSourceProblems(project, [reference])).toEqual([]);
+    goal.sourceIds = [];
+    expect(modelSourceProblems(project, [reference])).toEqual([source.id]);
+    expect(projectEvidence(project, [reference]).some(item => item.id === source.id)).toBe(false);
   });
   it('marks derived artifacts from confidential evidence as local-only context', () => {
     const project = freshState().projects[0];

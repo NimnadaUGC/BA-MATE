@@ -6,7 +6,7 @@ The default model boundary now performs real inference. There is no mock fallbac
 
 - **Ollama:** `/api/chat`, with JSON schema in `format`, a configured context capacity, output budget and timeout. One local inference request runs at a time to limit pressure on modest hardware.
 - **OpenAI:** `https://api.openai.com/v1/responses`, using the participant's OpenAI Platform project API key. Requests set `store: false`; structured tasks use strict `text.format` JSON Schema. ChatGPT subscriptions and sign-in credentials are not OpenAI API keys.
-- **Gemini:** `https://generativelanguage.googleapis.com/v1/interactions`, using a Gemini API key. Requests set `store: false`; structured tasks use a JSON response format and schema. `GEMINI_API_KEY` is preferred for environment-managed use, with `GOOGLE_API_KEY` accepted as a fallback.
+- **Gemini:** `https://generativelanguage.googleapis.com/v1/interactions`, using a Gemini API key. Moving model aliases ending in `-latest` (including `gemini-flash-latest`) use the documented `/v1beta/interactions` endpoint. The requested model is preserved; there is no automatic model fallback. Requests set `store: false`; structured tasks use a JSON response format and schema. `GEMINI_API_KEY` is preferred for environment-managed use, with `GOOGLE_API_KEY` accepted as a fallback.
 - **OpenRouter:** `/api/v1/chat/completions`, strict JSON schema and endpoints required to support requested parameters; provider fallback disabled for structured tasks.
 - **Hugging Face:** `https://router.huggingface.co/v1/chat/completions`, strict JSON schema. Selected model/provider must support this feature.
 

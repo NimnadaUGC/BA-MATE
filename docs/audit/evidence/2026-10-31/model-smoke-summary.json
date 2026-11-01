@@ -1,0 +1,134 @@
+{
+  "date": "2026-10-31",
+  "candidate": "1.0.0-beta.1",
+  "provider": "OpenRouter",
+  "model": "google/gemini-2.5-flash-lite",
+  "context_tokens": 16384,
+  "output_tokens": 4096,
+  "temperature": 0.2,
+  "fixture": "Fictional cash checkout; no participant or analyst project data",
+  "results": [
+    {
+      "task": "conversation",
+      "status": "passed-schema",
+      "seconds": 2.36,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 472,
+        "output_tokens": 24,
+        "cost": 5.68e-05
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    },
+    {
+      "task": "conversation-action",
+      "status": "passed-schema",
+      "seconds": 1.46,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 981,
+        "output_tokens": 118,
+        "cost": 0.0001453
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    },
+    {
+      "task": "clarify",
+      "status": "passed-schema",
+      "seconds": 2.21,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 1712,
+        "output_tokens": 365,
+        "cost": 0.0003172
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    },
+    {
+      "task": "requirements",
+      "status": "passed-schema",
+      "seconds": 2.42,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 1708,
+        "output_tokens": 510,
+        "cost": 0.0003748
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    },
+    {
+      "task": "validate",
+      "status": "passed-schema",
+      "seconds": 1.79,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 1705,
+        "output_tokens": 274,
+        "cost": 0.0002801
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    },
+    {
+      "task": "document",
+      "status": "passed-schema",
+      "seconds": 1.91,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 1706,
+        "output_tokens": 206,
+        "cost": 0.00018766
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    },
+    {
+      "task": "impact",
+      "status": "passed-schema",
+      "seconds": 3.01,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 1716,
+        "output_tokens": 634,
+        "cost": 0.0004252
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    },
+    {
+      "task": "diagram",
+      "status": "passed-schema",
+      "seconds": 1.87,
+      "model": "google/gemini-2.5-flash-lite",
+      "usage": {
+        "input_tokens": 1710,
+        "output_tokens": 212,
+        "cost": 0.00019037
+      },
+      "included": [
+        "SRC-BETA",
+        "FR-BETA"
+      ]
+    }
+  ],
+  "reported_matrix_cost_usd": 0.00197743,
+  "scope_note": "Eight sequential API task smoke checks, plus separate browser journeys. Format/reference validation is not semantic qualification. Matrix was run before final version-label alignment; restart-check.json verifies final app/framework labels. The inference adapter was unchanged during this pass."
+}

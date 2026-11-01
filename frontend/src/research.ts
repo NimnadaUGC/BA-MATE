@@ -5,7 +5,8 @@ import type {
   WorkflowGate,
 } from "./types";
 
-export const PROTOTYPE_VERSION = "BA Mate 0.4.0";
+export const PROTOTYPE_VERSION = "BA Mate 1.0.0-beta.3";
+export const FRAMEWORK_VERSION = "F4-draft.1 (v1.0.0)";
 export const DATASET_VERSION = "2026.08";
 export const PROMPT_VERSION = "evidence-workflow-3";
 

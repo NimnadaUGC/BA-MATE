@@ -20,7 +20,7 @@ export interface RunMetadata {
 export interface SavedRun {
   id: string; at: string; goalId?: string; evaluationRunId?: string; status: 'pending' | 'accepted' | 'rejected' | 'failed' | 'cancelled'; fingerprint: string;
   proposal: Proposal; reviewedProposal?: Proposal; reviewedAt?: string; validationError?: string; metadata: RunMetadata; selected?: string[];
-  receipt: { included_reference_ids: string[]; omitted_reference_ids: string[]; partial_reference_ids: string[]; context_hash: string };
+  receipt: { included_reference_ids: string[]; omitted_reference_ids: string[]; partial_reference_ids: string[]; context_hash: string; estimated_tokens?: number; token_budget?: number; output_reservation?: number; safety_tokens?: number; counting_method?: string; history_messages_omitted?: number };
   failure?: { category: 'cancelled' | 'timeout' | 'unavailable' | 'credentials' | 'quota' | 'schema' | 'stale' | 'unknown'; message: string; at: string };
 }
 export const evidenceFingerprint = (p: Project) => JSON.stringify(projectEvidence(p));
@@ -39,7 +39,7 @@ export function applyProposal(project: Project, runId: string, selected: string[
   const trace = (target: string, sources: string[]) => sources.forEach(from => project.traceLinks.push({ id: uid('TR'), from, to: target, fromRevision: revisionOf(project, from), toRevision: revisionOf(project, target), relation: 'Proposed evidence support — verify meaning', status: 'Pending', goalId: project.activeGoalId }));
   edited.questions.forEach((q, i) => {
     if (!selectedItem('questions', i, q.source_ids)) return;
-    project.clarifications.push({ id: uid('CQ'), priority: q.priority, question: q.question, rationale: q.rationale, sourceId: q.source_ids[0] ?? 'PROJECT-BRIEF', owner: 'Business analyst', status: 'Unanswered', suggestions: [], affects: [], version: 1, goalId: project.activeGoalId });
+    project.clarifications.push({ id: uid('CQ'), priority: q.priority, question: q.question, rationale: q.rationale, sourceId: q.source_ids[0] ?? 'PROJECT-BRIEF', sourceIds: q.source_ids.length ? [...new Set(q.source_ids)] : ['PROJECT-BRIEF'], owner: 'Business analyst', status: 'Unanswered', suggestions: [], affects: [], version: 1, goalId: project.activeGoalId });
   });
   edited.requirements.forEach((r, i) => {
     if (!selectedItem('requirements', i, r.source_ids)) return;

@@ -1,0 +1,11 @@
+{
+  "http_status": 200,
+  "hash_matches_reviewed": true,
+  "passages": 4,
+  "characters": 4942,
+  "approved_by_extraction": false,
+  "original_bytes_retained": true,
+  "limitations": [
+    "Extraction may omit layout, images, headers or text boxes. Review against the original."
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "application": "1.0.0-beta.3",
+  "framework": "F4-draft.1 (v1.0.0)",
+  "skill_companion": "v1.0.5",
+  "guide_date": "2026-11-01",
+  "template": "BA-Mate-01-Getting-Started-v1.0.5.docx",
+  "template_sha256": "3f92e426602083be3fe7e7b815202b6a12611d99401e1d4bf532349c8cac635f",
+  "docx": [
+    {
+      "file": "BA-Mate-App-01-installation-and-ai-setup-v1.0.0-beta.3.docx",
+      "source": "01-installation-and-ai-setup.md",
+      "expected_pages": 7,
+      "preserved_parts": 9,
+      "sha256": "02dd5a7ded9af64d30cbb2ac39e735ef1313ebbc8c77cd94c02604a8d739942c"
+    },
+    {
+      "file": "BA-Mate-App-02-complete-workflow-v1.0.0-beta.3.docx",
+      "source": "02-complete-workflow.md",
+      "expected_pages": 11,
+      "preserved_parts": 9,
+      "sha256": "302756b816107750ca66b43038cfb315fcbb23442ac75d49eada560e440be913"
+    },
+    {
+      "file": "BA-Mate-App-03-beta-testing-and-recovery-v1.0.0-beta.3.docx",
+      "source": "03-beta-testing-and-recovery.md",
+      "expected_pages": 6,
+      "preserved_parts": 9,
+      "sha256": "15329b44668f6a82e368194583e9bbfb14b90f24d6c77b5cfe42f7f2313b2e8b"
+    }
+  ],
+  "publication": {
+    "reviewed_on": "2026-11-01",
+    "total_pages": 24,
+    "checks": [
+      {
+        "guide": 1,
+        "docx": "BA-Mate-App-01-installation-and-ai-setup-v1.0.0-beta.3.docx",
+        "pdf": "BA-Mate-App-01-installation-and-ai-setup-v1.0.0-beta.3.pdf",
+        "pages": 7,
+        "source_fragments_checked": 122,
+        "internal_links": 9,
+        "pdf_outline_entries": 11,
+        "visual_review": "Every page inspected; latest changed pages re-inspected; unchanged pages image-identical",
+        "preserved_template_parts": 9,
+        "sha256": {
+          "docx": "02dd5a7ded9af64d30cbb2ac39e735ef1313ebbc8c77cd94c02604a8d739942c",
+          "pdf": "8e109cf916676a44fdedb2787ed39b42f85475cb09afd519931d4bea7cf63a31"
+        },
+        "source_sha256": "38165cc5e6f4b40a4e6caf192296b27c003a3cc87c98e57415f0d8ac0d25b32b"
+      },
+      {
+        "guide": 2,
+        "docx": "BA-Mate-App-02-complete-workflow-v1.0.0-beta.3.docx",
+        "pdf": "BA-Mate-App-02-complete-workflow-v1.0.0-beta.3.pdf",
+        "pages": 11,
+        "source_fragments_checked": 140,
+        "internal_links": 13,
+        "pdf_outline_entries": 18,
+        "visual_review": "Every page inspected; latest changed pages re-inspected; unchanged pages image-identical",
+        "preserved_template_parts": 9,
+        "sha256": {
+          "docx": "302756b816107750ca66b43038cfb315fcbb23442ac75d49eada560e440be913",
+          "pdf": "231c5be60ebf8ad3a2a15ceb4265936535c4702bc86eaae222b6bf7a433e06ce"
+        },
+        "source_sha256": "e35f928836d103d52bacb3aa3bedbf385d36bbe5eb773b5d41ff9cfe4ad870bd"
+      },
+      {
+        "guide": 3,
+        "docx": "BA-Mate-App-03-beta-testing-and-recovery-v1.0.0-beta.3.docx",
+        "pdf": "BA-Mate-App-03-beta-testing-and-recovery-v1.0.0-beta.3.pdf",
+        "pages": 6,
+        "source_fragments_checked": 144,
+        "internal_links": 6,
+        "pdf_outline_entries": 11,
+        "visual_review": "Every page inspected; latest changed pages re-inspected; unchanged pages image-identical",
+        "preserved_template_parts": 9,
+        "sha256": {
+          "docx": "15329b44668f6a82e368194583e9bbfb14b90f24d6c77b5cfe42f7f2313b2e8b",
+          "pdf": "f0ea1578913f45abdb85d1b6d4491d4d8389b0c527bc1968c063f73ce5e7ff70"
+        },
+        "source_sha256": "72480b0b693127d59eb831ba1561091a294d6af6e1f84727510ab1bdd359c58d"
+      }
+    ],
+    "new_application_qualification": false,
+    "practice_materials": {
+      "examples/practice-cash-checkout.txt": "952db13fc9a9a6f263c68fe9630890f28569dea125bb25a2aa6ffd8223a2842c",
+      "examples/beta-feedback-template.md": "ea3ccf0f1a653b9a2611e7dd8dd07110b4c5fef06aaf66269ce8511a929bbf49"
+    }
+  }
+}

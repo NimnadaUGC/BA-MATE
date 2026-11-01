@@ -6,7 +6,7 @@ The interface now enforces the six workflow stages, goal-scoped approved baselin
 
 ## Installation
 
-A native Apple Silicon macOS build is produced in `release/mac-arm64/BA Mate.app`. It bundles the Python service and interface. It does not bundle Ollama, model weights, cloud credentials, participant data or research results. The current build is unsigned and has not been notarized. Test signing and clean-device installation before distributing it publicly. Windows and Linux packaging definitions exist but their builds need validation on those platforms.
+An older unsigned Apple Silicon pilot build may exist in `release/mac-arm64/BA Mate.app`; it predates the current audit changes and has not been qualified as the current application. Build and test a fresh package before sharing it. The desktop packaging process bundles the service and interface, but not Ollama, model weights or cloud credentials. Verify package contents, signing, notarization and clean-device installation before distribution. Windows and Linux packaging definitions exist but need validation on those platforms.
 
 For the source-based browser edition, install Python 3.10+ and Node.js compatible with the pinned Vite release (Node 22.12+), then run from the BA_MATE folder:
 

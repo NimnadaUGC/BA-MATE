@@ -1,6 +1,7 @@
 import { get, set } from "idb-keyval";
 import { api, importSource } from "./api";
 import type { Project, Source } from "./types";
+import { goalSourceCurrent, modelSourceProblems } from "./sourceScope";
 
 const SOURCE_EXTENSIONS = [
   ".pdf", ".docx", ".txt", ".md", ".csv", ".json", ".xlsx", ".xls",
@@ -123,21 +124,26 @@ async function writeBrowserFiles(workspaceId: string, files: StoredFile[]) {
     const stem = dot > 0 ? name.slice(0, dot) : name;
     const suffix = dot > 0 ? name.slice(dot) : "";
     let destinationName = name;
+    let available = false;
+    let identical = false;
     for (let index = 0; index < 1000; index += 1) {
       try {
         const existingHandle = await directory.getFileHandle(destinationName);
         const existing = new Uint8Array(await (await existingHandle.getFile()).arrayBuffer());
-        if (existing.length === bytes.length && existing.every((value, byteIndex) => value === bytes[byteIndex])) break;
+        if (existing.length === bytes.length && existing.every((value, byteIndex) => value === bytes[byteIndex])) { identical = true; break; }
         destinationName = `${stem} (${index + 1})${suffix}`;
       } catch (error) {
-        if (error instanceof DOMException && error.name === "NotFoundError") break;
+        if (error instanceof DOMException && error.name === "NotFoundError") { available = true; break; }
         throw error;
       }
     }
-    const handle = await directory.getFileHandle(destinationName, { create: true });
-    const writable = await handle.createWritable();
-    await writable.write(bytes);
-    await writable.close();
+    if (!available && !identical) throw new Error(`Too many files named ${name} exist in the project folder.`);
+    if (!identical) {
+      const handle = await directory.getFileHandle(destinationName, { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+    }
     written.push([folderPath, destinationName].filter(Boolean).join("/"));
   }
   return written;
@@ -156,6 +162,8 @@ export async function writeProjectFiles(reference: WorkspaceReference, files: St
       method: "POST",
       body: JSON.stringify({ files: batch.map(file => ({ name: file.name, relative_path: file.relativePath, data: file.data })) }),
     });
+    if (!Array.isArray(result.written) || result.written.length !== batch.length || result.written.some(path => typeof path !== "string" || !path.trim()))
+      throw new Error("The project folder did not confirm every copied file. Check the folder before retrying.");
     written.push(...result.written);
   }
   return written;
@@ -266,6 +274,20 @@ async function hashOriginal(data: string): Promise<string> {
     .map(value => value.toString(16).padStart(2, "0")).join("");
 }
 
+/** Only the exact known original may be reattached to an existing evidence record. */
+export async function reattachSourceOriginal(project: Project, source: Source, file: File): Promise<string> {
+  if (source.relativePath || source.originalBase64) throw new Error("This source already has an original. Review it before replacing the file.");
+  if (!source.sha256) throw new Error("This older source has no recorded file hash. Add the file as a new source and review its evidence links instead.");
+  if (!project.workspaceId || !project.workspaceKind) throw new Error("Connect a project folder before reattaching an original.");
+  if (file.size > 25 * 1024 * 1024 || file.size === 0) throw new Error("Choose a nonempty file no larger than 25 MB.");
+  const data = await readFileForWorkspace(file);
+  if (await hashOriginal(data) !== source.sha256) throw new Error("This file does not match the recorded original. Choose the exact original, or add a different revision as a new source.");
+  const reference = await ensureProjectWorkspace(project);
+  const [path] = await writeProjectFiles(reference, [{ name: file.name, relativePath: `Uploaded Sources/${file.name}`, data }]);
+  if (!path) throw new Error("The original could not be saved to the project folder.");
+  return path;
+}
+
 export async function verifySourceOriginal(project: Project, source: Source): Promise<void> {
   if (!source.sha256) throw new Error("This source has no verified extraction. Wait for analysis before including it as evidence.");
   const original = source.relativePath && project.workspaceId && project.workspaceKind
@@ -275,6 +297,18 @@ export async function verifySourceOriginal(project: Project, source: Source): Pr
   if (!original) throw new Error("The original source is unavailable. Reconnect its project folder before approval.");
   if (await hashOriginal(original.data) !== source.sha256)
     throw new Error("The original changed since extraction. Wait for BA Mate to refresh it, then review the new revision.");
+}
+
+/** Check current file bytes before sending reviewed source content to an AI task. */
+export async function verifyGoalSourceOriginals(project: Project, references: { id: string; type: string }[] = []): Promise<void> {
+  const problems = modelSourceProblems(project, references);
+  if (problems.length) throw new Error(`Review and select current revisions in Sources: ${problems.join(', ')}.`);
+  const goal = project.goals.find(item => item.id === project.activeGoalId);
+  if (!goal) return;
+  for (const source of project.sources.filter(item => goalSourceCurrent(goal, item))) {
+    try { await verifySourceOriginal(project, source); }
+    catch (error) { throw new Error(`${source.name}: ${error instanceof Error ? error.message : 'The original could not be checked.'}`); }
+  }
 }
 
 /** Include originals discovered in connected folders before making a portable backup. */
@@ -323,6 +357,10 @@ function archiveCurrentAgentRun(project: Project): void {
 }
 
 /** Materialize the originals in a fresh managed folder when importing a package. */
+export function missingRestoredOriginalCount(project: Project): number {
+  return project.sources.filter(source => !source.relativePath).length;
+}
+
 export async function restoreProjectWorkspace(project: Project): Promise<Project> {
   for (const source of project.sources) {
     if (!source.originalBase64) continue;
@@ -335,19 +373,26 @@ export async function restoreProjectWorkspace(project: Project): Promise<Project
     }
   }
   const reference = await createProjectWorkspace(project.id, project.name);
-  await createProjectDirectories(reference, project.workspaceFolders ?? []);
-  for (const source of project.sources) {
-    const original = sourceStoredFile(source);
-    if (!original) {
-      source.relativePath = undefined;
-      source.approved = false;
-      if (source.status !== "Excluded") source.status = "Needs review";
-      source.extractionLimitations = [...(source.extractionLimitations ?? []), "The original file is unavailable in this backup. Review the recorded extraction before reuse."];
-      continue;
+  try {
+    await createProjectDirectories(reference, project.workspaceFolders ?? []);
+    for (const source of project.sources) {
+      const original = sourceStoredFile(source);
+      if (!original) {
+        source.relativePath = undefined;
+        source.analysisSignature = undefined;
+        source.approved = false;
+        for (const goal of project.goals) if (goal.sourceRevisionPins) delete goal.sourceRevisionPins[source.id];
+        if (source.status !== "Excluded") source.status = "Needs review";
+        source.extractionLimitations = [...(source.extractionLimitations ?? []), "The original file is unavailable in this backup. Review the recorded extraction before reuse."];
+        continue;
+      }
+      const written = await writeProjectFiles(reference, [original]);
+      source.relativePath = written[0];
+      source.originalBase64 = undefined;
     }
-    const written = await writeProjectFiles(reference, [original]);
-    source.relativePath = written[0];
-    source.originalBase64 = undefined;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "The restored files could not be written.";
+    throw new Error(`Restore could not finish: ${reason} A partial project folder was created at ${reference.displayPath || reference.folderName}. Check that folder before retrying; it was not removed.`);
   }
   archiveCurrentAgentRun(project);
   project.workspaceId = reference.workspaceId;
@@ -361,6 +406,7 @@ export async function restoreProjectWorkspace(project: Project): Promise<Project
 export async function copyProjectToWorkspace(project: Project, candidate: WorkspaceCandidate): Promise<Project> {
   const copy = await prepareProjectBackup(project);
   const reference = await createProjectWorkspace(project.id, project.name, candidate);
+  try {
   await createProjectDirectories(reference, copy.workspaceFolders ?? []);
   for (const source of copy.sources) {
     const original = sourceStoredFile(source);
@@ -373,6 +419,10 @@ export async function copyProjectToWorkspace(project: Project, candidate: Worksp
     const written = await writeProjectFiles(reference, [original]);
     source.relativePath = written[0];
     source.originalBase64 = undefined;
+  }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "The source files could not be copied.";
+    throw new Error(`Folder connection could not finish: ${reason} Some files may have been copied to ${reference.displayPath || reference.folderName}. The original project was not changed; check that folder before retrying.`);
   }
   archiveCurrentAgentRun(copy);
   copy.workspaceId = reference.workspaceId;

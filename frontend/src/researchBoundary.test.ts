@@ -50,3 +50,11 @@ describe('research upload boundary', () => {
     expect(state.projects[0].name).toBeTruthy();
   });
 });
+
+it('uses the captured framework version without relabelling historical runs', () => {
+  const state = freshState();
+  addConfiguredEvent(state, { id: 'EVT-version', at: '2026-10-31T12:00:00Z', projectId: state.projects[0].id, stage: 'Define', section: 'workflow', type: 'interaction', successful: true });
+  expect(buildResearchUpload(state, enrollment).events[0].versions.framework).toBe('ba-framework-0.4.0');
+  state.evaluationRuns.find(run => run.id === 'RUN-1')!.frameworkVersion = 'F4-draft.1 (v1.0.0)';
+  expect(buildResearchUpload(state, enrollment).events[0].versions.framework).toBe('F4-draft.1 (v1.0.0)');
+});

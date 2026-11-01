@@ -21,7 +21,9 @@ class RealWorkflowTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.path_patch = patch.object(runtime, 'DATA_DIR', Path(self.temp.name))
         self.path_patch.start()
-        self.config_patch = patch.object(runtime, 'config', runtime.ProviderConfig())
+        # The offline byte-count fallback is deliberately conservative and the
+        # structured schema alone can exceed the default 8K context.
+        self.config_patch = patch.object(runtime, 'config', runtime.ProviderConfig(context_tokens=32768))
         self.config_patch.start()
         self.client = TestClient(app)
         self.client.headers['x-ba-session'] = runtime.SESSION_TOKEN
@@ -184,6 +186,16 @@ class RealWorkflowTests(unittest.TestCase):
         self.assertFalse(response.json()['has_key'])
         self.assertNotIn('secret-test-value', (Path(self.temp.name) / 'provider.json').read_text())
 
+    def test_settings_allow_large_manual_profiles_without_the_prototype_ceiling(self):
+        response = self.client.put('/api/settings', json={'provider': 'ollama', 'model': 'manually-configured-test',
+                                                         'context_tokens': 262144, 'output_tokens': 32768})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['context_tokens'], 262144)
+        self.assertEqual(response.json()['output_tokens'], 32768)
+        rejected = self.client.put('/api/settings', json={'context_tokens': 32768, 'output_tokens': 32768})
+        self.assertEqual(rejected.status_code, 422)
+        self.assertEqual(self.client.get('/api/settings').json()['output_tokens'], 32768)
+
     def test_full_evidence_and_governance_reach_provider(self):
         result = proposal(questions=[{'question': 'Who handles overdue requests?', 'rationale': 'Escalation is undefined', 'source_ids': ['SRC-1'], 'priority': 'Blocking'}])
         fake = AsyncMock(return_value={'text': json.dumps(result), 'model': 'test-model', 'provider': 'ollama', 'usage': {'input_tokens': 100, 'output_tokens': 70, 'cost': None}})
@@ -235,13 +247,13 @@ class RealWorkflowTests(unittest.TestCase):
 
     def test_receipt_discloses_partial_evidence(self):
         self.request['context'][0]['content'] = 'Long business evidence. ' * 7000
-        messages, receipt = prepare_messages(RunRequest.model_validate(self.request), runtime.ProviderConfig(), schema_for_provider())
+        messages, receipt = prepare_messages(RunRequest.model_validate(self.request), runtime.config, schema_for_provider())
         self.assertEqual(receipt['partial_reference_ids'], ['SRC-1'])
         self.assertLess(receipt['estimated_tokens'] + runtime.config.output_tokens, runtime.config.context_tokens)
 
     def test_generic_condition_does_not_receive_framework_prompt(self):
         self.request['condition'] = 'Generic AI'
-        messages, receipt = prepare_messages(RunRequest.model_validate(self.request), runtime.ProviderConfig(), schema_for_provider())
+        messages, receipt = prepare_messages(RunRequest.model_validate(self.request), runtime.config, schema_for_provider())
         self.assertNotIn('evidence-grounded workflow', messages[0]['content'])
         self.assertFalse(receipt['governance_included'])
 
