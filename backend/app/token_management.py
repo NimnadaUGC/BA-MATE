@@ -36,7 +36,9 @@ async def model_capabilities(provider: str, model: str, refresh=False):
                 'note': 'Use the limits published for this model. Local Ollama also depends on available memory.'}
     now = time.monotonic()
     failed = False
-    if refresh or (now - _catalogue_at > CACHE_SECONDS and now - _last_attempt > 30):
+    cache_expired = not _catalogue_at or now - _catalogue_at > CACHE_SECONDS
+    retry_ready = not _last_attempt or now - _last_attempt > 30
+    if refresh or (cache_expired and retry_ready):
         _last_attempt = now
         try:
             async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:

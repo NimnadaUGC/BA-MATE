@@ -44,6 +44,21 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status_code, 422)
         self.assertEqual(tokens.apply_model_limits(ProviderConfig(context_tokens=131072, output_tokens=16384), caps).context_tokens, 131072)
 
+    async def test_first_discovery_on_recently_booted_machine(self):
+        real = httpx.AsyncClient
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(200, json={'data': [{'id': 'test/large', 'context_length': 1000000}]})
+
+        with patch('app.token_management.time.monotonic', return_value=10), \
+             patch('app.token_management.httpx.AsyncClient', side_effect=lambda **kw: real(transport=httpx.MockTransport(handler), **kw)):
+            cfg = await tokens.resolve_config(ProviderConfig(provider='openrouter', model='test/large', context_mode='model'))
+            await tokens.resolve_config(cfg)
+        self.assertEqual(cfg.context_tokens, 1000000)
+        self.assertEqual(len(seen), 1)
+
     async def test_unknown_auto_model_fails_explicitly_but_manual_still_works(self):
         real = httpx.AsyncClient
         with patch('app.token_management.httpx.AsyncClient', side_effect=lambda **kw: real(transport=httpx.MockTransport(lambda req: httpx.Response(503)), **kw)):
